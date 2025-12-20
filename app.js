@@ -37,17 +37,22 @@ app.use('/webhook/github', express.raw({ type: 'application/json' }), (req, res,
   next();
 });
 
-// Middleware for Discord interactions - use raw body for signature verification
-// verifyKeyMiddleware needs raw body to verify the signature
-app.use('/interactions', express.raw({ type: 'application/json' }));
-
 /**
  * Discord Interactions endpoint
  */
-app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
-  const { id, type, data } = req.body;
-  const guildId = req.body.guild_id;
-  const channelId = req.body.channel?.id;
+app.post('/interactions', express.raw({ type: 'application/json' }), verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
+  // Parse JSON body after verification
+  let body;
+  try {
+    body = JSON.parse(req.body.toString());
+  } catch (error) {
+    console.error('Error parsing request body:', error);
+    return res.status(400).send('Invalid JSON');
+  }
+
+  const { id, type, data } = body;
+  const guildId = body.guild_id;
+  const channelId = body.channel?.id;
 
   // Handle verification requests
   if (type === InteractionType.PING) {
