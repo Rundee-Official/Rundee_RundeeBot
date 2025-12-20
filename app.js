@@ -41,20 +41,21 @@ app.use('/webhook/github', express.raw({ type: 'application/json' }), (req, res,
  * Discord Interactions endpoint
  */
 app.post('/interactions', express.raw({ type: 'application/json' }), verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
-  // verifyKeyMiddleware already parses the body, but if it's still a Buffer, parse it
-  let body = req.body;
-  if (Buffer.isBuffer(body)) {
-    try {
-      body = JSON.parse(body.toString());
-    } catch (error) {
-      console.error('Error parsing request body:', error);
-      return res.status(400).send('Invalid JSON');
+  try {
+    // verifyKeyMiddleware already parses the body, but if it's still a Buffer, parse it
+    let body = req.body;
+    if (Buffer.isBuffer(body)) {
+      try {
+        body = JSON.parse(body.toString());
+      } catch (error) {
+        console.error('Error parsing request body:', error);
+        return res.status(400).send('Invalid JSON');
+      }
     }
-  }
 
-  const { id, type, data } = body;
-  const guildId = body.guild_id;
-  const channelId = body.channel?.id;
+    const { id, type, data } = body;
+    const guildId = body.guild_id;
+    const channelId = body.channel?.id;
 
   // Handle verification requests
   if (type === InteractionType.PING) {
