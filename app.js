@@ -37,6 +37,11 @@ app.use('/webhook/github', express.raw({ type: 'application/json' }), (req, res,
   next();
 });
 
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.send('Rundee Bot is running!');
+});
+
 // Discord interactions endpoint - verifyKeyMiddleware needs raw body
 app.post('/interactions', 
   express.raw({ type: 'application/json' }),
