@@ -52,18 +52,23 @@ app.post('/interactions',
       const timestamp = req.headers['x-signature-timestamp'];
       
       if (!signature || !timestamp) {
-        return res.status(401).send('Missing signature headers');
+        console.error('Missing signature headers', { signature: !!signature, timestamp: !!timestamp });
+        return res.status(401).json({ error: 'Missing signature headers' });
       }
       
+      // Ensure body is a Buffer
+      const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
+      
       const isValidRequest = verifyKey(
-        req.body,
+        rawBody,
         signature,
         timestamp,
         process.env.PUBLIC_KEY
       );
       
       if (!isValidRequest) {
-        return res.status(401).send('Invalid signature');
+        console.error('Invalid signature verification');
+        return res.status(401).json({ error: 'Invalid signature' });
       }
       
       // Parse body after verification
@@ -72,9 +77,9 @@ app.post('/interactions',
       const guildId = body.guild_id;
       const channelId = body.channel?.id;
 
-      // Handle verification requests
+      // Handle verification requests (PING from Discord)
       if (type === InteractionType.PING) {
-        return res.send({ type: InteractionResponseType.PONG });
+        return res.json({ type: InteractionResponseType.PONG });
       }
 
       // Handle slash command requests
