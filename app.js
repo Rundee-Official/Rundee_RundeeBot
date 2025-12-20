@@ -40,7 +40,16 @@ app.post('/interactions',
   verifyKeyMiddleware(process.env.PUBLIC_KEY),
   async (req, res) => {
     try {
-      const body = JSON.parse(req.body.toString());
+      // Parse body - verifyKeyMiddleware may have already parsed it
+      let body;
+      if (Buffer.isBuffer(req.body)) {
+        body = JSON.parse(req.body.toString());
+      } else if (typeof req.body === 'string') {
+        body = JSON.parse(req.body);
+      } else {
+        body = req.body; // Already parsed
+      }
+      
       const { id, type, data } = body;
       const guildId = body.guild_id;
       const channelId = body.channel?.id;
