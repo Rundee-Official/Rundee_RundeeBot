@@ -37,60 +37,60 @@ app.use('/webhook/github', express.raw({ type: 'application/json' }), (req, res,
   next();
 });
 
-/**
- * Discord Interactions endpoint
- */
-app.post('/interactions', express.json({ verify: (req, res, buf) => {
-  // Store raw body for signature verification
-  req.rawBody = buf;
-}}), verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
-  try {
-    // verifyKeyMiddleware should have already parsed the body
-    const { id, type, data } = req.body;
-    const guildId = req.body.guild_id;
-    const channelId = req.body.channel?.id;
-
-  // Handle verification requests
-  if (type === InteractionType.PING) {
-    return res.send({ type: InteractionResponseType.PONG });
-  }
-
-  // Handle slash command requests
-  if (type === InteractionType.APPLICATION_COMMAND) {
-    const { name } = data;
-
+// Discord interactions endpoint - verifyKeyMiddleware needs raw body
+app.post('/interactions', 
+  express.raw({ type: 'application/json' }),
+  verifyKeyMiddleware(process.env.PUBLIC_KEY),
+  async (req, res) => {
     try {
-      if (name === 'schedule-meeting') {
-        return await handleScheduleMeeting(data, channelId, res);
-      } else if (name === 'list-meetings') {
-        return await handleListMeetings(res);
-      } else if (name === 'delete-meeting') {
-        return await handleDeleteMeeting(data, res);
-      } else if (name === 'setup-github') {
-        return await handleSetupGitHub(data, guildId, channelId, res);
+      // Parse body after verification
+      const body = JSON.parse(req.body.toString());
+      const { id, type, data } = body;
+      const guildId = body.guild_id;
+      const channelId = body.channel?.id;
+
+      // Handle verification requests
+      if (type === InteractionType.PING) {
+        return res.send({ type: InteractionResponseType.PONG });
       }
 
-      console.error(`unknown command: ${name}`);
-      return res.status(400).json({ error: 'unknown command' });
+      // Handle slash command requests
+      if (type === InteractionType.APPLICATION_COMMAND) {
+        const { name } = data;
+
+        try {
+          if (name === 'schedule-meeting') {
+            return await handleScheduleMeeting(data, channelId, res);
+          } else if (name === 'list-meetings') {
+            return await handleListMeetings(res);
+          } else if (name === 'delete-meeting') {
+            return await handleDeleteMeeting(data, res);
+          } else if (name === 'setup-github') {
+            return await handleSetupGitHub(data, guildId, channelId, res);
+          }
+
+          console.error(`unknown command: ${name}`);
+          return res.status(400).json({ error: 'unknown command' });
+        } catch (error) {
+          console.error('Error handling command:', error);
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: `❌ 오류가 발생했습니다: ${error.message}`,
+            },
+          });
+        }
+      }
+
+      console.error('unknown interaction type', type);
+      return res.status(400).json({ error: 'unknown interaction type' });
     } catch (error) {
-      console.error('Error handling command:', error);
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: `❌ 오류가 발생했습니다: ${error.message}`,
-        },
-      });
+      console.error('Error in /interactions endpoint:', error);
+      console.error('Error stack:', error.stack);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
-
-    console.error('unknown interaction type', type);
-    return res.status(400).json({ error: 'unknown interaction type' });
-  } catch (error) {
-    console.error('Error in /interactions endpoint:', error);
-    console.error('Error stack:', error.stack);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
+);
 
 /**
  * GitHub Webhook endpoint
@@ -122,7 +122,6 @@ app.post('/webhook/github', async (req, res) => {
     res.status(500).send('Error processing webhook');
   }
 });
-
 
 /**
  * Handle schedule-meeting command
@@ -180,12 +179,10 @@ async function handleScheduleMeeting(data, channelId, res) {
   meetings.push(meeting);
 
   // Schedule reminders for each time
-  let scheduledReminders = 0;
   const reminderTimes = reminderMinutesArray.map(minutes => {
     const reminderTime = new Date(meetingDate.getTime() - minutes * 60 * 1000);
     if (reminderTime > new Date()) {
       scheduleMeetingReminder(meeting, minutes);
-      scheduledReminders++;
       return { minutes, time: reminderTime };
     }
     return null;

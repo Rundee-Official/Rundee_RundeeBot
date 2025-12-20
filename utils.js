@@ -31,8 +31,9 @@ export async function InstallGlobalCommands(appId, commands) {
   try {
     // This is calling the bulk overwrite endpoint: https://discord.com/developers/docs/interactions/application-commands#bulk-overwrite-global-application-commands
     await DiscordRequest(endpoint, { method: 'PUT', body: commands });
+    console.log('Commands registered successfully!');
   } catch (err) {
-    console.error(err);
+    console.error('Error registering commands:', err);
   }
 }
 
@@ -45,3 +46,4 @@ export function getRandomEmoji() {
 export function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
+
