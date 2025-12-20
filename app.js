@@ -43,12 +43,13 @@ app.get('/', (req, res) => {
 });
 
 // Discord interactions endpoint
-app.post('/interactions', 
-  express.json(),
+app.post('/interactions',
+  express.json({ verify: (req, res, buf, encoding) => {
+    req.rawBody = buf;
+  }}),
+  verifyKeyMiddleware(process.env.PUBLIC_KEY),
   async (req, res) => {
     try {
-      // For now, skip signature verification to test if server responds
-      // TODO: Add proper signature verification
       const body = req.body;
       const { id, type, data } = body;
       const guildId = body.guild_id;
