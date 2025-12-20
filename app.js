@@ -44,13 +44,12 @@ app.get('/', (req, res) => {
 
 // Discord interactions endpoint
 app.post('/interactions',
-  express.json({ verify: (req, res, buf, encoding) => {
-    req.rawBody = buf;
-  }}),
+  express.raw({ type: 'application/json' }),
   verifyKeyMiddleware(process.env.PUBLIC_KEY),
   async (req, res) => {
     try {
-      const body = req.body;
+      // Parse body after verification
+      const body = JSON.parse(req.body.toString());
       const { id, type, data } = body;
       const guildId = body.guild_id;
       const channelId = body.channel?.id;
