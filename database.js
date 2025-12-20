@@ -5,10 +5,21 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const db = new Database(join(__dirname, 'rundee-bot.db'));
+const dbPath = join(__dirname, 'rundee-bot.db');
+console.log('Initializing database at:', dbPath);
+
+let db;
+try {
+  db = new Database(dbPath);
+  console.log('Database initialized successfully');
+} catch (error) {
+  console.error('Failed to initialize database:', error);
+  throw error;
+}
 
 // Initialize database tables
-db.exec(`
+try {
+  db.exec(`
   CREATE TABLE IF NOT EXISTS meetings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -35,6 +46,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_meetings_guild_date ON meetings(guild_id, date);
   CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(date);
 `);
+  console.log('Database tables initialized successfully');
+} catch (error) {
+  console.error('Failed to initialize database tables:', error);
+  throw error;
+}
 
 export const dbGet = db.prepare.bind(db);
 export const dbRun = db.prepare.bind(db);
