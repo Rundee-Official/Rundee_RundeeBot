@@ -11,7 +11,7 @@ import {
 import { DiscordRequest } from './utils.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 // Store meetings in memory (in production, use a database)
 const meetings = [];
