@@ -37,8 +37,9 @@ app.use('/webhook/github', express.raw({ type: 'application/json' }), (req, res,
   next();
 });
 
-// Middleware for Discord interactions (JSON)
-app.use('/interactions', express.json());
+// Middleware for Discord interactions - use raw body for signature verification
+// verifyKeyMiddleware needs raw body to verify the signature
+app.use('/interactions', express.raw({ type: 'application/json' }));
 
 /**
  * Discord Interactions endpoint
