@@ -401,52 +401,92 @@ async function handleEditMeeting(data, res) {
  * Handle set-meeting-channel command
  */
 async function handleSetMeetingChannel(data, guildId, channelId, res) {
-  if (!guildId) {
+  try {
+    if (!guildId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+        },
+      });
+    }
+
+    const channelOption = data.options?.find(opt => opt.name === 'channel');
+    const targetChannelId = channelOption?.value || channelId;
+
+    try {
+      guildSettingsQueries.setMeetingChannel.run(guildId, targetChannelId);
+    } catch (dbError) {
+      console.error('Database error in set-meeting-channel:', dbError);
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `❌ 데이터베이스 오류가 발생했습니다: ${dbError.message}`,
+        },
+      });
+    }
+
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+        content: `✅ 회의 알림 채널이 <#${targetChannelId}>로 설정되었습니다.`,
+      },
+    });
+  } catch (error) {
+    console.error('Error in handleSetMeetingChannel:', error);
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: `❌ 오류가 발생했습니다: ${error.message}`,
       },
     });
   }
-
-  const channelOption = data.options?.find(opt => opt.name === 'channel');
-  const targetChannelId = channelOption?.value || channelId;
-
-  guildSettingsQueries.setMeetingChannel.run(guildId, targetChannelId);
-
-  return res.send({
-    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: {
-      content: `✅ 회의 알림 채널이 <#${targetChannelId}>로 설정되었습니다.`,
-    },
-  });
 }
 
 /**
  * Handle set-github-channel command
  */
 async function handleSetGithubChannel(data, guildId, channelId, res) {
-  if (!guildId) {
+  try {
+    if (!guildId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+        },
+      });
+    }
+
+    const channelOption = data.options?.find(opt => opt.name === 'channel');
+    const targetChannelId = channelOption?.value || channelId;
+
+    try {
+      guildSettingsQueries.setGithubChannel.run(guildId, targetChannelId);
+    } catch (dbError) {
+      console.error('Database error in set-github-channel:', dbError);
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: `❌ 데이터베이스 오류가 발생했습니다: ${dbError.message}`,
+        },
+      });
+    }
+
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+        content: `✅ GitHub 알림 채널이 <#${targetChannelId}>로 설정되었습니다.`,
+      },
+    });
+  } catch (error) {
+    console.error('Error in handleSetGithubChannel:', error);
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: `❌ 오류가 발생했습니다: ${error.message}`,
       },
     });
   }
-
-  const channelOption = data.options?.find(opt => opt.name === 'channel');
-  const targetChannelId = channelOption?.value || channelId;
-
-  guildSettingsQueries.setGithubChannel.run(guildId, targetChannelId);
-
-  return res.send({
-    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: {
-      content: `✅ GitHub 알림 채널이 <#${targetChannelId}>로 설정되었습니다.`,
-    },
-  });
 }
 
 /**
