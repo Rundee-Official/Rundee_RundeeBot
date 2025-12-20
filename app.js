@@ -6,7 +6,7 @@ import {
   InteractionResponseFlags,
   InteractionResponseType,
   InteractionType,
-  verifyKeyMiddleware,
+  verifyKey,
 } from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
 
@@ -45,9 +45,27 @@ app.get('/', (req, res) => {
 // Discord interactions endpoint
 app.post('/interactions',
   express.raw({ type: 'application/json' }),
-  verifyKeyMiddleware(process.env.PUBLIC_KEY),
   async (req, res) => {
     try {
+      // Verify signature manually
+      const signature = req.headers['x-signature-ed25519'];
+      const timestamp = req.headers['x-signature-timestamp'];
+      
+      if (!signature || !timestamp) {
+        return res.status(401).send('Missing signature headers');
+      }
+      
+      const isValidRequest = verifyKey(
+        req.body,
+        signature,
+        timestamp,
+        process.env.PUBLIC_KEY
+      );
+      
+      if (!isValidRequest) {
+        return res.status(401).send('Invalid signature');
+      }
+      
       // Parse body after verification
       const body = JSON.parse(req.body.toString());
       const { id, type, data } = body;
