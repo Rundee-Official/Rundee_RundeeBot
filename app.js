@@ -83,8 +83,13 @@ app.post('/interactions', express.json({ verify: (req, res, buf) => {
     }
   }
 
-  console.error('unknown interaction type', type);
-  return res.status(400).json({ error: 'unknown interaction type' });
+    console.error('unknown interaction type', type);
+    return res.status(400).json({ error: 'unknown interaction type' });
+  } catch (error) {
+    console.error('Error in /interactions endpoint:', error);
+    console.error('Error stack:', error.stack);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
