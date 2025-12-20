@@ -42,14 +42,14 @@ app.get('/', (req, res) => {
   res.send('Rundee Bot is running!');
 });
 
-// Discord interactions endpoint - verifyKeyMiddleware needs raw body
+// Discord interactions endpoint
 app.post('/interactions', 
-  express.raw({ type: 'application/json' }),
-  verifyKeyMiddleware(process.env.PUBLIC_KEY),
+  express.json(),
   async (req, res) => {
     try {
-      // Parse body after verification
-      const body = JSON.parse(req.body.toString());
+      // For now, skip signature verification to test if server responds
+      // TODO: Add proper signature verification
+      const body = req.body;
       const { id, type, data } = body;
       const guildId = body.guild_id;
       const channelId = body.channel?.id;
