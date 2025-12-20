@@ -6,7 +6,7 @@ import {
   InteractionResponseFlags,
   InteractionResponseType,
   InteractionType,
-  verifyKey,
+  verifyKeyMiddleware,
 } from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
 
@@ -45,33 +45,10 @@ app.get('/', (req, res) => {
 // Discord interactions endpoint
 app.post('/interactions',
   express.raw({ type: 'application/json' }),
+  verifyKeyMiddleware(process.env.PUBLIC_KEY),
   async (req, res) => {
     try {
-      // Verify signature manually
-      const signature = req.headers['x-signature-ed25519'];
-      const timestamp = req.headers['x-signature-timestamp'];
-      
-      if (!signature || !timestamp) {
-        console.error('Missing signature headers', { signature: !!signature, timestamp: !!timestamp });
-        return res.status(401).json({ error: 'Missing signature headers' });
-      }
-      
-      // Ensure body is a Buffer
-      const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
-      
-      const isValidRequest = verifyKey(
-        rawBody,
-        signature,
-        timestamp,
-        process.env.PUBLIC_KEY
-      );
-      
-      if (!isValidRequest) {
-        console.error('Invalid signature verification');
-        return res.status(401).json({ error: 'Invalid signature' });
-      }
-      
-      // Parse body after verification
+      // Parse body after verification (verifyKeyMiddleware already verified)
       const body = JSON.parse(req.body.toString());
       const { id, type, data } = body;
       const guildId = body.guild_id;
