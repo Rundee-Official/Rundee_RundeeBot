@@ -10,6 +10,7 @@ import {
 } from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
 import db, { meetingQueries, guildSettingsQueries } from './database.js';
+import { t, getGuildLanguage } from './messages.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -82,10 +83,12 @@ app.post('/interactions',
           return res.status(400).json({ error: 'unknown command' });
         } catch (error) {
           console.error('Error handling command:', error);
+          const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+          const lang = getGuildLanguage(settings);
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: `❌ 오류가 발생했습니다: ${error.message}`,
+              content: t('errorOccurred', lang, { message: error.message }),
             },
           });
         }
@@ -146,11 +149,14 @@ app.post('/webhook/github', async (req, res) => {
  * Handle schedule-meeting command
  */
 async function handleScheduleMeeting(data, guildId, channelId, res) {
+  const settings = guildSettingsQueries.get.get(guildId);
+  const lang = getGuildLanguage(settings);
+  
   if (!guildId) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+        content: t('serverOnlyCommand', lang),
       },
     });
   }
@@ -179,7 +185,7 @@ async function handleScheduleMeeting(data, guildId, channelId, res) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: '❌ 잘못된 날짜 형식입니다. 형식: YYYY-MM-DD HH:mm (예: 2024-12-25 14:30)',
+        content: t('invalidDate', lang),
       },
     });
   }
@@ -188,7 +194,7 @@ async function handleScheduleMeeting(data, guildId, channelId, res) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: '❌ 과거 날짜는 선택할 수 없습니다.',
+        content: t('pastDate', lang),
       },
     });
   }
@@ -197,7 +203,6 @@ async function handleScheduleMeeting(data, guildId, channelId, res) {
   const participants = parseParticipants(participantsStr);
 
   // Get meeting channel from settings or use current channel
-  const settings = guildSettingsQueries.get.get(guildId);
   const meetingChannelId = settings?.meeting_channel_id || channelId;
 
   // Parse repeat end date if provided
@@ -208,7 +213,7 @@ async function handleScheduleMeeting(data, guildId, channelId, res) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: '❌ 잘못된 반복 종료 날짜 형식입니다.',
+          content: t('invalidDate', lang),
         },
       });
     }
@@ -246,27 +251,31 @@ async function handleScheduleMeeting(data, guildId, channelId, res) {
   }).filter(Boolean);
 
   const reminderTimesText = reminderTimes.length > 0
-    ? reminderTimes.map(rt => `${formatDateTime(rt.time)} (${rt.minutes}분 전)`).join('\n')
-    : '알림 시간이 모두 지났습니다.';
+    ? reminderTimes.map(rt => {
+        const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
+        return `${formatDateTime(rt.time)} (${minutesText})`;
+      }).join('\n')
+    : t('allRemindersPassed', lang);
 
   let repeatText = '';
   if (repeatType !== 'none') {
-    const repeatNames = {
-      daily: '매일',
-      weekly: '매주',
-      biweekly: '격주',
-      monthly: '매월',
-    };
-    repeatText = `\n**반복:** ${repeatNames[repeatType] || repeatType}`;
-    if (repeatEndDate) {
-      repeatText += ` (종료: ${formatDateTime(repeatEndDate)})`;
-    }
+    const repeatKey = `repeat${repeatType.charAt(0).toUpperCase() + repeatType.slice(1)}`;
+    repeatText = t(repeatKey, lang, { 
+      endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
+    });
   }
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      content: `✅ 회의 일정이 등록되었습니다!\n\n**제목:** ${title}\n**일시:** ${formatDateTime(meetingDate)}\n**참석자:** ${participants.map(p => `<@${p}>`).join(', ')}\n**알림 시간:**\n${reminderTimesText}${repeatText}\n**ID:** ${meetingId}`,
+      content: t('meetingScheduled', lang, {
+        title,
+        date: formatDateTime(meetingDate),
+        participants: participants.map(p => `<@${p}>`).join(', '),
+        reminderTimes: reminderTimesText,
+        repeatText,
+        id: meetingId,
+      }),
     },
   });
 }
@@ -275,6 +284,9 @@ async function handleScheduleMeeting(data, guildId, channelId, res) {
  * Handle list-meetings command
  */
 async function handleListMeetings(guildId, res) {
+  const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+  const lang = getGuildLanguage(settings);
+  
   const meetings = guildId
     ? meetingQueries.getUpcomingByGuild.all(guildId)
     : meetingQueries.getUpcoming.all();
@@ -288,22 +300,25 @@ async function handleListMeetings(guildId, res) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: '📅 등록된 회의 일정이 없습니다.',
+        content: t('noMeetings', lang),
       },
     });
   }
 
+  const dateLabel = lang === 'ko' ? '일시' : 'Date';
+  const participantsLabel = lang === 'ko' ? '참석자' : 'Participants';
+  
   const meetingList = upcomingMeetings
     .map(m => {
       const participants = JSON.parse(m.participants);
-      return `**ID: ${m.id}** - ${m.title}\n일시: ${formatDateTime(new Date(m.date))}\n참석자: ${participants.map(p => `<@${p}>`).join(', ')}`;
+      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${participants.map(p => `<@${p}>`).join(', ')}`;
     })
     .join('\n\n');
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      content: `📅 등록된 회의 일정:\n\n${meetingList}`,
+      content: t('meetingsList', lang, { list: meetingList }),
     },
   });
 }
@@ -313,23 +328,31 @@ async function handleListMeetings(guildId, res) {
  */
 async function handleDeleteMeeting(data, res) {
   const meetingId = parseInt(data.options?.find(opt => opt.name === 'meeting_id')?.value);
-
+  
+  // Get guild ID from meeting to determine language
   const meeting = meetingQueries.getById.get(meetingId);
   if (!meeting) {
+    // Default to English if meeting not found
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: `❌ ID ${meetingId}인 회의를 찾을 수 없습니다.`,
+        content: t('meetingNotFound', 'en', { id: meetingId }),
       },
     });
   }
+  
+  const settings = guildSettingsQueries.get.get(meeting.guild_id);
+  const lang = getGuildLanguage(settings);
 
   meetingQueries.delete.run(meetingId);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      content: `✅ 회의 일정이 삭제되었습니다: **${meeting.title}** (${formatDateTime(new Date(meeting.date))})`,
+      content: t('meetingDeleted', lang, {
+        title: meeting.title,
+        date: formatDateTime(new Date(meeting.date)),
+      }),
     },
   });
 }
@@ -345,10 +368,13 @@ async function handleEditMeeting(data, res) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: `❌ ID ${meetingId}인 회의를 찾을 수 없습니다.`,
+        content: t('meetingNotFound', 'en', { id: meetingId }),
       },
     });
   }
+  
+  const settings = guildSettingsQueries.get.get(meeting.guild_id);
+  const lang = getGuildLanguage(settings);
 
   const dbMeeting = dbToMeeting(meeting);
   let title = dbMeeting.title;
@@ -367,7 +393,7 @@ async function handleEditMeeting(data, res) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: '❌ 잘못된 날짜 형식입니다.',
+          content: t('invalidDate', lang),
         },
       });
     }
@@ -401,7 +427,12 @@ async function handleEditMeeting(data, res) {
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      content: `✅ 회의 일정이 수정되었습니다!\n\n**제목:** ${title}\n**일시:** ${formatDateTime(date)}\n**참석자:** ${participants.map(p => `<@${p}>`).join(', ')}\n**ID:** ${meetingId}`,
+      content: t('meetingEdited', lang, {
+        title,
+        date: formatDateTime(date),
+        participants: participants.map(p => `<@${p}>`).join(', '),
+        id: meetingId,
+      }),
     },
   });
 }
@@ -411,11 +442,14 @@ async function handleEditMeeting(data, res) {
  */
 async function handleSetMeetingChannel(data, guildId, channelId, res) {
   try {
+    const settings = guildSettingsQueries.get.get(guildId);
+    const lang = getGuildLanguage(settings);
+    
     if (!guildId) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+          content: t('serverOnlyCommand', lang),
         },
       });
     }
@@ -430,7 +464,7 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `❌ 데이터베이스 오류가 발생했습니다: ${dbError.message}`,
+          content: t('errorOccurred', lang, { message: `Database error: ${dbError.message}` }),
         },
       });
     }
@@ -438,15 +472,17 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: `✅ 회의 알림 채널이 <#${targetChannelId}>로 설정되었습니다.`,
+        content: t('meetingChannelSet', lang, { channelId: targetChannelId }),
       },
     });
   } catch (error) {
     console.error('Error in handleSetMeetingChannel:', error);
+    const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+    const lang = getGuildLanguage(settings);
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: `❌ 오류가 발생했습니다: ${error.message}`,
+        content: t('errorOccurred', lang, { message: error.message }),
       },
     });
   }
@@ -457,11 +493,14 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
  */
 async function handleSetGithubChannel(data, guildId, channelId, res) {
   try {
+    const settings = guildSettingsQueries.get.get(guildId);
+    const lang = getGuildLanguage(settings);
+    
     if (!guildId) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+          content: t('serverOnlyCommand', lang),
         },
       });
     }
@@ -476,7 +515,7 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `❌ 데이터베이스 오류가 발생했습니다: ${dbError.message}`,
+          content: t('errorOccurred', lang, { message: `Database error: ${dbError.message}` }),
         },
       });
     }
@@ -484,15 +523,75 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: `✅ GitHub 알림 채널이 <#${targetChannelId}>로 설정되었습니다.`,
+        content: t('githubChannelSet', lang, { channelId: targetChannelId }),
       },
     });
   } catch (error) {
     console.error('Error in handleSetGithubChannel:', error);
+    const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+    const lang = getGuildLanguage(settings);
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: `❌ 오류가 발생했습니다: ${error.message}`,
+        content: t('errorOccurred', lang, { message: error.message }),
+      },
+    });
+  }
+}
+
+/**
+ * Handle set-language command
+ */
+async function handleSetLanguage(data, guildId, res) {
+  try {
+    if (!guildId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('serverOnlyCommand', 'en'),
+        },
+      });
+    }
+
+    const languageOption = data.options?.find(opt => opt.name === 'language');
+    const language = languageOption?.value || 'en';
+
+    if (language !== 'en' && language !== 'ko') {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', 'en', { message: 'Invalid language. Use "en" or "ko".' }),
+        },
+      });
+    }
+
+    try {
+      guildSettingsQueries.setLanguage.run(guildId, language);
+    } catch (dbError) {
+      console.error('Database error in set-language:', dbError);
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', 'en', { message: `Database error: ${dbError.message}` }),
+        },
+      });
+    }
+
+    const settings = guildSettingsQueries.get.get(guildId);
+    const lang = getGuildLanguage(settings);
+
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('languageSet', lang),
+      },
+    });
+  } catch (error) {
+    console.error('Error in handleSetLanguage:', error);
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', 'en', { message: error.message }),
       },
     });
   }
@@ -502,11 +601,14 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
  * Handle setup-github command
  */
 async function handleSetupGitHub(data, guildId, channelId, res) {
+  const settings = guildSettingsQueries.get.get(guildId);
+  const lang = getGuildLanguage(settings);
+  
   if (!guildId) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: '❌ 서버 내에서만 사용할 수 있는 명령어입니다.',
+        content: t('serverOnlyCommand', lang),
       },
     });
   }
@@ -540,7 +642,7 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: '❌ 잘못된 GitHub 저장소 URL입니다.',
+            content: t('invalidGithubUrl', lang),
           },
         });
       }
@@ -548,7 +650,7 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: '❌ GitHub 저장소 URL을 파싱하는 중 오류가 발생했습니다.',
+          content: t('errorOccurred', lang, { message: 'Failed to parse GitHub repository URL.' }),
         },
       });
     }
@@ -556,25 +658,28 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
 
   const webhookUrl = `${process.env.WEBHOOK_BASE_URL || 'https://rundeerundeebot-production.up.railway.app'}/webhook/github`;
   
-  let responseMessage = `✅ GitHub 알림이 <#${targetChannelId}> 채널로 설정되었습니다.\n\n`;
+  let repoInfo = '';
+  let steps = '';
   
   if (repositoryInfo) {
-    responseMessage += `**등록된 저장소:** ${repositoryInfo.full_name}\n`;
-    responseMessage += `**저장소 URL:** ${repositoryInfo.url}\n\n`;
-    responseMessage += `**웹훅 URL:** ${webhookUrl}\n\n`;
-    responseMessage += `다음 단계:\n`;
-    responseMessage += `1. ${repositoryInfo.url}/settings/hooks 접속\n`;
-    responseMessage += `2. "Add webhook" 클릭\n`;
-    responseMessage += `3. Payload URL에 다음 입력: ${webhookUrl}\n`;
-    responseMessage += `4. Content type: application/json 선택\n`;
-    responseMessage += `5. 이벤트 선택: Pushes, Pull requests, Issues\n`;
-    responseMessage += `6. "Add webhook" 저장\n\n`;
-    responseMessage += `설정 완료 후 GitHub 활동이 자동으로 Discord 채널에 알림으로 전송됩니다!`;
+    repoInfo = t('githubRepoRegistered', lang, {
+      repo: repositoryInfo.full_name,
+      url: repositoryInfo.url,
+    });
+    steps = t('githubSteps', lang, {
+      url: repositoryInfo.url,
+      webhookUrl,
+    });
   } else {
-    responseMessage += `**웹훅 URL:** ${webhookUrl}\n\n`;
-    responseMessage += `GitHub 저장소 URL을 등록하려면 다음 명령어를 사용하세요:\n`;
-    responseMessage += `\`/setup-github repository:https://github.com/user/repo\``;
+    steps = t('githubRepoNotSet', lang, { webhookUrl });
   }
+
+  const responseMessage = t('githubSetup', lang, {
+    channelId: targetChannelId,
+    repoInfo,
+    webhookUrl,
+    steps,
+  });
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,

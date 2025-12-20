@@ -179,6 +179,27 @@ const SETUP_GITHUB_COMMAND = {
   ],
 };
 
+// Set language command
+const SET_LANGUAGE_COMMAND = {
+  name: 'set-language',
+  description: 'Set the bot language (한국어/English)',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+  options: [
+    {
+      type: 3, // STRING
+      name: 'language',
+      description: 'Language to use (ko/en)',
+      required: true,
+      choices: [
+        { name: 'English', value: 'en' },
+        { name: '한국어', value: 'ko' },
+      ],
+    },
+  ],
+};
+
 const ALL_COMMANDS = [
   SCHEDULE_MEETING_COMMAND,
   LIST_MEETINGS_COMMAND,
@@ -187,6 +208,7 @@ const ALL_COMMANDS = [
   SET_MEETING_CHANNEL_COMMAND,
   SET_GITHUB_CHANNEL_COMMAND,
   SETUP_GITHUB_COMMAND,
+  SET_LANGUAGE_COMMAND,
 ];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);

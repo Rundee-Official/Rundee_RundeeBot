@@ -40,6 +40,7 @@ try {
     meeting_channel_id TEXT,
     github_channel_id TEXT,
     github_repository TEXT,
+    language TEXT DEFAULT 'en',
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
