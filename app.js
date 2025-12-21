@@ -799,7 +799,44 @@ async function handleMessageComponent(body, res) {
   if (customId === 'repeat_type_select' && componentType === 3) {
     const repeatType = data.values?.[0];
     
-    if (repeatType === 'none' || repeatType === 'daily' || repeatType === 'biweekly') {
+    if (repeatType === 'daily') {
+      // For daily, show option to exclude weekdays
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: lang === 'ko' 
+            ? '제외할 요일을 선택하세요 (복수 선택 가능, 제외할 것이 없으면 "없음" 선택):'
+            : 'Select weekdays to exclude (multiple selection allowed, select "None" if no exclusions):',
+          components: [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 3, // Select Menu (multi-select)
+                  custom_id: 'daily_exclude_weekdays',
+                  placeholder: lang === 'ko' ? '제외할 요일 선택' : 'Select weekdays to exclude',
+                  min_values: 0,
+                  max_values: 7,
+                  options: [
+                    { label: lang === 'ko' ? '없음' : 'None', value: 'none', description: lang === 'ko' ? '모든 요일 포함' : 'Include all days' },
+                    { label: lang === 'ko' ? '월요일' : 'Monday', value: '1' },
+                    { label: lang === 'ko' ? '화요일' : 'Tuesday', value: '2' },
+                    { label: lang === 'ko' ? '수요일' : 'Wednesday', value: '3' },
+                    { label: lang === 'ko' ? '목요일' : 'Thursday', value: '4' },
+                    { label: lang === 'ko' ? '금요일' : 'Friday', value: '5' },
+                    { label: lang === 'ko' ? '토요일' : 'Saturday', value: '6' },
+                    { label: lang === 'ko' ? '일요일' : 'Sunday', value: '0' },
+                  ],
+                },
+              ],
+            },
+          ],
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+    
+    if (repeatType === 'none' || repeatType === 'biweekly') {
       // For simple types, show modal for meeting details
       return res.send({
         type: InteractionResponseType.MODAL,
@@ -1276,11 +1313,24 @@ async function handleModalSubmit(body, res) {
       // Format: monthly_day_${dayOfMonth}
       repeatType = 'monthly_day';
       dayOfMonth = modalId.replace('monthly_day_', '');
+    } else if (modalId.startsWith('daily_except_')) {
+      // Format: daily_except_${weekdays} (e.g., daily_except_0,6 for excluding Sunday and Saturday)
+      repeatType = 'daily_except';
+      const excludeStr = modalId.replace('daily_except_', '');
+      if (excludeStr) {
+        weekday = excludeStr.split(',').map(w => parseInt(w));
+      } else {
+        weekday = [];
+      }
+    } else if (modalId === 'daily') {
+      // Simple daily with no exclusions
+      repeatType = 'daily';
+      weekday = [];
     } else {
       // Format: ${repeatType}_${weekday} or ${repeatType}
       const parts = modalId.split('_');
-      repeatType = parts[0]; // none, daily, biweekly, weekly
-      if (parts.length > 1) {
+      repeatType = parts[0]; // none, biweekly, weekly
+      if (parts.length > 1 && repeatType !== 'daily') {
         weekday = parts[1]; // For weekly/biweekly
       }
     }
@@ -1730,6 +1780,7 @@ async function handleRecurringMeeting(meetingRow) {
   let weekday = null;
   let dayOfMonth = null;
   let weekOfMonth = null;
+  let excludedWeekdays = [];
 
   if (repeatTypeStr.includes(':')) {
     const parts = repeatTypeStr.split(':');
@@ -1742,6 +1793,8 @@ async function handleRecurringMeeting(meetingRow) {
     } else if (repeatType === 'monthly_weekday') {
       weekOfMonth = parseInt(parts[1]);
       weekday = parseInt(parts[2]);
+    } else if (repeatType === 'daily_except') {
+      excludedWeekdays = parts[1].split(',').map(w => parseInt(w));
     }
   }
 
@@ -1749,9 +1802,18 @@ async function handleRecurringMeeting(meetingRow) {
   let nextDate;
   const [hours, minutes] = [currentDate.getHours(), currentDate.getMinutes()];
   
-  if (repeatType === 'daily') {
+  if (repeatType === 'daily' || repeatType === 'daily_except') {
+    // For daily with exclusions, skip excluded weekdays
     nextDate = new Date(currentDate);
     nextDate.setDate(nextDate.getDate() + 1);
+    nextDate.setHours(hours, minutes, 0, 0);
+    
+    // Skip excluded weekdays (max 7 iterations to avoid infinite loop)
+    let attempts = 0;
+    while (excludedWeekdays.includes(nextDate.getDay()) && attempts < 7) {
+      nextDate.setDate(nextDate.getDate() + 1);
+      attempts++;
+    }
   } else if (repeatType === 'weekly' && weekday !== null) {
     nextDate = getNextWeekday(new Date(currentDate.getTime() + 24 * 60 * 60 * 1000), weekday, hours, minutes);
   } else if (repeatType === 'biweekly' && weekday !== null) {
@@ -1777,6 +1839,21 @@ async function handleRecurringMeeting(meetingRow) {
   // Check if next date exceeds end date
   if (repeatEndDate && nextDate > repeatEndDate) {
     return;
+  }
+
+  // For daily_except, verify the next date is not excluded (extra safety check)
+  if (repeatType === 'daily_except' && excludedWeekdays.includes(nextDate.getDay())) {
+    // Skip to next valid day
+    let attempts = 0;
+    while (excludedWeekdays.includes(nextDate.getDay()) && attempts < 7) {
+      nextDate.setDate(nextDate.getDate() + 1);
+      attempts++;
+    }
+    
+    // Check again if we exceeded end date
+    if (repeatEndDate && nextDate > repeatEndDate) {
+      return;
+    }
   }
 
   // Create next meeting
