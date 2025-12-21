@@ -1320,7 +1320,6 @@ async function handleModalSubmit(body, res) {
   let weekday = null;
   let dayOfMonth = null;
   let weekOfMonth = null;
-  let participants = null; // Will be parsed from custom_id if participants were selected via Select Menu
 
   if (customId.startsWith('meeting_modal_')) {
     const modalId = customId.replace('meeting_modal_', '');
