@@ -664,6 +664,58 @@ async function handleSetLanguage(data, guildId, res) {
 }
 
 /**
+ * Handle channel-status command
+ */
+async function handleChannelStatus(guildId, res) {
+  const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+  const lang = getGuildLanguage(settings);
+  
+  if (!guildId) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('serverOnlyCommand', lang),
+      },
+    });
+  }
+
+  const meetingChannelId = settings?.meeting_channel_id;
+  const githubChannelId = settings?.github_channel_id;
+  const githubRepo = settings?.github_repository;
+
+  // Validate channels
+  let meetingChannelStatus = meetingChannelId ? `<#${meetingChannelId}>` : t('channelNotSet', lang);
+  let githubChannelStatus = githubChannelId ? `<#${githubChannelId}>` : t('channelNotSet', lang);
+
+  if (meetingChannelId) {
+    const isValid = await validateChannel(meetingChannelId);
+    if (!isValid) {
+      meetingChannelStatus = t('channelInvalid', lang);
+    }
+  }
+
+  if (githubChannelId) {
+    const isValid = await validateChannel(githubChannelId);
+    if (!isValid) {
+      githubChannelStatus = t('channelInvalid', lang);
+    }
+  }
+
+  const githubRepoStatus = githubRepo || t('channelNotSet', lang);
+
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: t('channelStatus', lang, {
+        meetingChannel: meetingChannelStatus,
+        githubChannel: githubChannelStatus,
+        githubRepo: githubRepoStatus,
+      }),
+    },
+  });
+}
+
+/**
  * Handle test-meeting command (creates a meeting 1 minute from now for testing)
  */
 async function handleTestMeeting(data, guildId, channelId, res) {
