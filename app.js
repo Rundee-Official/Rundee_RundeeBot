@@ -83,6 +83,8 @@ app.post('/interactions',
             return await handleSetMeetingTime(data, guildId, channelId, res);
           } else if (name === 'set-language') {
             return await handleSetLanguage(data, guildId, res);
+          } else if (name === 'channel-status') {
+            return await handleChannelStatus(guildId, res);
           }
 
           console.error(`unknown command: ${name}`);
@@ -499,6 +501,17 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
     const channelOption = data.options?.find(opt => opt.name === 'channel');
     const targetChannelId = channelOption?.value || channelId;
 
+    // Validate channel access
+    const isValid = await validateChannel(targetChannelId);
+    if (!isValid) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('invalidChannelError', lang),
+        },
+      });
+    }
+
     try {
       guildSettingsQueries.setMeetingChannel.run(guildId, targetChannelId);
     } catch (dbError) {
@@ -549,6 +562,17 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
 
     const channelOption = data.options?.find(opt => opt.name === 'channel');
     const targetChannelId = channelOption?.value || channelId;
+
+    // Validate channel access
+    const isValid = await validateChannel(targetChannelId);
+    if (!isValid) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('invalidChannelError', lang),
+        },
+      });
+    }
 
     try {
       guildSettingsQueries.setGithubChannel.run(guildId, targetChannelId);
@@ -1901,15 +1925,39 @@ function dbToMeeting(row) {
 }
 
 /**
+ * Validate if bot can access a channel
+ */
+async function validateChannel(channelId) {
+  try {
+    const response = await DiscordRequest(`channels/${channelId}`, {
+      method: 'GET',
+    });
+    return response.ok;
+  } catch (error) {
+    console.error(`Channel validation failed for ${channelId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Send a message to a Discord channel
  */
 async function sendMessage(channelId, content) {
-  return await DiscordRequest(`channels/${channelId}/messages`, {
-    method: 'POST',
-    body: {
-      content,
-    },
-  });
+  try {
+    return await DiscordRequest(`channels/${channelId}/messages`, {
+      method: 'POST',
+      body: {
+        content,
+      },
+    });
+  } catch (error) {
+    console.error(`Failed to send message to channel ${channelId}:`, error);
+    // Check if it's a channel access error
+    if (error.message && (error.message.includes('50035') || error.message.includes('Missing Access') || error.message.includes('Unknown Channel'))) {
+      throw new Error('CHANNEL_INVALID');
+    }
+    throw error;
+  }
 }
 
 /**

@@ -22,6 +22,11 @@ export const messages = {
     // Channel settings
     meetingChannelSet: 'Meeting announcement channel set to <#{channelId}>',
     githubChannelSet: 'GitHub announcement channel set to <#{channelId}>',
+    channelStatus: 'Current Channel Settings\n\nMeeting Channel: {meetingChannel}\nGitHub Channel: {githubChannel}\nGitHub Repository: {githubRepo}',
+    channelNotSet: 'Not set',
+    channelInvalid: 'Invalid or inaccessible channel',
+    channelNotFound: 'Channel not found or bot does not have access',
+    invalidChannelError: 'Cannot set channel: Channel not found or bot does not have access to this channel',
     
     // GitHub setup
     githubSetup: 'GitHub notifications set to <#{channelId}> channel.\n\n{repoInfo}**Webhook URL:** {webhookUrl}\n\n{steps}',
@@ -66,6 +71,11 @@ export const messages = {
     // Channel settings
     meetingChannelSet: '회의 알림 채널이 <#{channelId}>로 설정되었습니다.',
     githubChannelSet: 'GitHub 알림 채널이 <#{channelId}>로 설정되었습니다.',
+    channelStatus: '현재 채널 설정\n\n회의 채널: {meetingChannel}\nGitHub 채널: {githubChannel}\nGitHub 저장소: {githubRepo}',
+    channelNotSet: '설정되지 않음',
+    channelInvalid: '유효하지 않거나 접근 불가능한 채널',
+    channelNotFound: '채널을 찾을 수 없거나 봇이 접근 권한이 없습니다',
+    invalidChannelError: '채널을 설정할 수 없습니다: 채널을 찾을 수 없거나 봇이 접근 권한이 없습니다',
     
     // GitHub setup
     githubSetup: 'GitHub 알림이 <#{channelId}> 채널로 설정되었습니다.\n\n{repoInfo}**웹훅 URL:** {webhookUrl}\n\n{steps}',

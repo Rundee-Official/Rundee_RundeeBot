@@ -226,6 +226,15 @@ const SET_MEETING_TIME_COMMAND = {
   contexts: [0, 1, 2],
 };
 
+// Channel status command
+const CHANNEL_STATUS_COMMAND = {
+  name: 'channel-status',
+  description: 'Show current channel settings for meetings and GitHub',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+};
+
 const ALL_COMMANDS = [
   SCHEDULE_MEETING_COMMAND,
   LIST_MEETINGS_COMMAND,
@@ -237,6 +246,7 @@ const ALL_COMMANDS = [
   SET_LANGUAGE_COMMAND,
   TEST_MEETING_COMMAND,
   SET_MEETING_TIME_COMMAND,
+  CHANNEL_STATUS_COMMAND,
 ];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
