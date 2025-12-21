@@ -152,13 +152,83 @@ const SET_LANGUAGE_COMMAND = {
   ],
 };
 
-// Schedule meeting command (interactive GUI)
+// Schedule meeting command
 const SET_MEETING_TIME_COMMAND = {
   name: 'set-meeting-time',
-  description: 'Schedule a meeting with interactive setup (회의 일정을 등록합니다)',
+  description: 'Schedule a meeting (회의 일정을 등록합니다)',
   type: 1,
   integration_types: [0, 1],
   contexts: [0, 1, 2],
+  options: [
+    {
+      type: 3, // STRING
+      name: 'title',
+      description: 'Meeting title (회의 제목)',
+      required: true,
+    },
+    {
+      type: 3, // STRING
+      name: 'date',
+      description: 'Date & time (YYYY-MM-DD HH:mm) (예: 2024-12-25 14:30)',
+      required: true,
+    },
+    {
+      type: 3, // STRING
+      name: 'participants',
+      description: 'Participants (@mentions or @role mentions) (참석자)',
+      required: true,
+    },
+    {
+      type: 3, // STRING
+      name: 'repeat_type',
+      description: 'Repeat type (반복 주기)',
+      required: false,
+      choices: [
+        { name: 'No Repeat', value: 'none' },
+        { name: 'Daily', value: 'daily' },
+        { name: 'Weekly', value: 'weekly' },
+        { name: 'Bi-weekly', value: 'biweekly' },
+        { name: 'Monthly (Day)', value: 'monthly_day' },
+        { name: 'Monthly (Weekday)', value: 'monthly_weekday' },
+      ],
+    },
+    {
+      type: 4, // INTEGER
+      name: 'weekday',
+      description: 'Weekday (0=Sunday, 1=Monday, ..., 6=Saturday) (요일)',
+      required: false,
+    },
+    {
+      type: 4, // INTEGER
+      name: 'day_of_month',
+      description: 'Day of month (1-31) (월 중 날짜)',
+      required: false,
+    },
+    {
+      type: 4, // INTEGER
+      name: 'week_of_month',
+      description: 'Week of month (1-4, or -1 for last week) (월 중 주차)',
+      required: false,
+    },
+    {
+      type: 3, // STRING
+      name: 'reminder_minutes',
+      description: 'Reminder minutes before meeting (comma-separated) (예: 1,5,10)',
+      required: false,
+    },
+    {
+      type: 3, // STRING
+      name: 'repeat_end_date',
+      description: 'Repeat end date (YYYY-MM-DD) (반복 종료 날짜)',
+      required: false,
+    },
+    {
+      type: 7, // CHANNEL
+      name: 'channel',
+      description: 'Channel for meeting announcements (기본값: 현재 채널)',
+      required: false,
+    },
+  ],
 };
 
 // Channel status command
