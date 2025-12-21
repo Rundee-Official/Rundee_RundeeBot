@@ -79,6 +79,8 @@ app.post('/interactions',
             return await handleSetupGitHub(data, guildId, channelId, res);
           } else if (name === 'test-meeting') {
             return await handleTestMeeting(data, guildId, channelId, res);
+          } else if (name === 'set-meeting-time') {
+            return await handleSetMeetingTime(data, guildId, channelId, res);
           }
 
           console.error(`unknown command: ${name}`);
@@ -91,6 +93,42 @@ app.post('/interactions',
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
               content: t('errorOccurred', lang, { message: error.message }),
+            },
+          });
+        }
+      }
+
+      // Handle MESSAGE_COMPONENT (type 3) - buttons, select menus
+      if (type === 3) {
+        try {
+          return await handleMessageComponent(body, res);
+        } catch (error) {
+          console.error('Error handling message component:', error);
+          const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+          const lang = getGuildLanguage(settings);
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: t('errorOccurred', lang, { message: error.message }),
+              flags: InteractionResponseFlags.EPHEMERAL,
+            },
+          });
+        }
+      }
+
+      // Handle MODAL_SUBMIT (type 5) - modal form submissions
+      if (type === 5) {
+        try {
+          return await handleModalSubmit(body, res);
+        } catch (error) {
+          console.error('Error handling modal submit:', error);
+          const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+          const lang = getGuildLanguage(settings);
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: t('errorOccurred', lang, { message: error.message }),
+              flags: InteractionResponseFlags.EPHEMERAL,
             },
           });
         }
@@ -662,6 +700,833 @@ async function handleTestMeeting(data, guildId, channelId, res) {
 }
 
 /**
+ * Handle set-meeting-time command (interactive GUI)
+ */
+async function handleSetMeetingTime(data, guildId, channelId, res) {
+  const settings = guildSettingsQueries.get.get(guildId);
+  const lang = getGuildLanguage(settings);
+  
+  if (!guildId) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('serverOnlyCommand', lang),
+      },
+    });
+  }
+
+  // Show repeat type selection menu
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: lang === 'ko' 
+        ? '회의 반복 주기를 선택하세요:'
+        : 'Select meeting repeat frequency:',
+      components: [
+        {
+          type: 1, // Action Row
+          components: [
+            {
+              type: 3, // Select Menu
+              custom_id: 'repeat_type_select',
+              placeholder: lang === 'ko' ? '반복 주기 선택' : 'Select repeat type',
+              options: [
+                {
+                  label: lang === 'ko' ? '반복 없음' : 'No Repeat',
+                  value: 'none',
+                  description: lang === 'ko' ? '한 번만 예약' : 'Schedule once',
+                },
+                {
+                  label: lang === 'ko' ? '매일' : 'Daily',
+                  value: 'daily',
+                  description: lang === 'ko' ? '매일 같은 시간' : 'Every day at same time',
+                },
+                {
+                  label: lang === 'ko' ? '매주' : 'Weekly',
+                  value: 'weekly',
+                  description: lang === 'ko' ? '매주 같은 요일' : 'Every week on same weekday',
+                },
+                {
+                  label: lang === 'ko' ? '격주' : 'Bi-weekly',
+                  value: 'biweekly',
+                  description: lang === 'ko' ? '격주 같은 요일' : 'Every 2 weeks on same weekday',
+                },
+                {
+                  label: lang === 'ko' ? '매월 (날짜)' : 'Monthly (Day)',
+                  value: 'monthly_day',
+                  description: lang === 'ko' ? '매월 같은 날짜 (예: 매월 15일)' : 'Every month on same date (e.g., 15th)',
+                },
+                {
+                  label: lang === 'ko' ? '매월 (요일)' : 'Monthly (Weekday)',
+                  value: 'monthly_weekday',
+                  description: lang === 'ko' ? '매월 같은 주의 같은 요일 (예: 첫째 주 월요일)' : 'Every month on same weekday (e.g., 1st Monday)',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      flags: InteractionResponseFlags.EPHEMERAL,
+    },
+  });
+}
+
+/**
+ * Handle message component interactions (buttons, select menus)
+ */
+async function handleMessageComponent(body, res) {
+  const { data, guild_id: guildId, channel, member } = body;
+  const channelId = channel?.id;
+  const userId = member?.user?.id;
+  
+  const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+  const lang = getGuildLanguage(settings);
+
+  if (!guildId) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('serverOnlyCommand', lang),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
+  const componentType = data.component_type;
+  const customId = data.custom_id;
+
+  // Handle repeat type selection
+  if (customId === 'repeat_type_select' && componentType === 3) {
+    const repeatType = data.values?.[0];
+    
+    if (repeatType === 'none' || repeatType === 'daily' || repeatType === 'biweekly') {
+      // For simple types, show modal for meeting details
+      return res.send({
+        type: InteractionResponseType.MODAL,
+        data: {
+          custom_id: `meeting_modal_${repeatType}`,
+          title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
+          components: [
+            {
+              type: 1, // Action Row
+              components: [
+                {
+                  type: 4, // Text Input
+                  custom_id: 'meeting_title',
+                  label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                  style: 1, // Short
+                  min_length: 1,
+                  max_length: 100,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_date',
+                  label: lang === 'ko' ? '날짜 및 시간 (YYYY-MM-DD HH:mm)' : 'Date & Time (YYYY-MM-DD HH:mm)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 2024-12-25 14:30' : 'e.g., 2024-12-25 14:30',
+                  min_length: 16,
+                  max_length: 16,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_participants',
+                  label: lang === 'ko' ? '참석자 (@멘션 또는 사용자ID)' : 'Participants (@mentions or user IDs)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: @user1 @user2' : 'e.g., @user1 @user2',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'reminder_minutes',
+                  label: lang === 'ko' ? '알림 시간(분 전, 쉼표로 구분)' : 'Reminder Minutes (comma-separated)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 1,5,10 (기본값: 15)' : 'e.g., 1,5,10 (default: 15)',
+                  required: false,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'repeat_end_date',
+                  label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD, 선택사항)' : 'Repeat End Date (YYYY-MM-DD, optional)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
+                  required: false,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    } else if (repeatType === 'weekly' || repeatType === 'monthly_weekday') {
+      // For weekly/monthly_weekday, show weekday selection first
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: lang === 'ko' ? '요일을 선택하세요:' : 'Select weekday:',
+          components: [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 3,
+                  custom_id: `weekday_select_${repeatType}`,
+                  placeholder: lang === 'ko' ? '요일 선택' : 'Select weekday',
+                  options: [
+                    { label: lang === 'ko' ? '월요일' : 'Monday', value: '1' },
+                    { label: lang === 'ko' ? '화요일' : 'Tuesday', value: '2' },
+                    { label: lang === 'ko' ? '수요일' : 'Wednesday', value: '3' },
+                    { label: lang === 'ko' ? '목요일' : 'Thursday', value: '4' },
+                    { label: lang === 'ko' ? '금요일' : 'Friday', value: '5' },
+                    { label: lang === 'ko' ? '토요일' : 'Saturday', value: '6' },
+                    { label: lang === 'ko' ? '일요일' : 'Sunday', value: '0' },
+                  ],
+                },
+              ],
+            },
+          ],
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    } else if (repeatType === 'monthly_day') {
+      // For monthly_day, show day of month selection
+      const dayOptions = Array.from({ length: 31 }, (_, i) => ({
+        label: `${i + 1}${lang === 'ko' ? '일' : 'th'}`,
+        value: String(i + 1),
+      }));
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: lang === 'ko' ? '매월 몇 일인지 선택하세요:' : 'Select day of month:',
+          components: [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 3,
+                  custom_id: 'monthly_day_select',
+                  placeholder: lang === 'ko' ? '날짜 선택' : 'Select day',
+                  options: dayOptions,
+                },
+              ],
+            },
+          ],
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+  }
+
+  // Handle weekday selection for weekly/monthly_weekday
+  if (customId?.startsWith('weekday_select_')) {
+    const repeatType = customId.replace('weekday_select_', '');
+    const weekday = data.values?.[0];
+    
+    if (repeatType === 'monthly_weekday') {
+      // For monthly_weekday, show week of month selection
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: lang === 'ko' ? '몇 번째 주인지 선택하세요:' : 'Select which week of month:',
+          components: [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 3,
+                  custom_id: `monthly_week_select_${weekday}`,
+                  placeholder: lang === 'ko' ? '주 선택' : 'Select week',
+                  options: [
+                    { label: lang === 'ko' ? '첫째 주' : '1st week', value: '1' },
+                    { label: lang === 'ko' ? '둘째 주' : '2nd week', value: '2' },
+                    { label: lang === 'ko' ? '셋째 주' : '3rd week', value: '3' },
+                    { label: lang === 'ko' ? '넷째 주' : '4th week', value: '4' },
+                    { label: lang === 'ko' ? '마지막 주' : 'Last week', value: '-1' },
+                  ],
+                },
+              ],
+            },
+          ],
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    } else {
+      // For weekly/biweekly, show modal directly
+      return res.send({
+        type: InteractionResponseType.MODAL,
+        data: {
+          custom_id: `meeting_modal_${repeatType}_${weekday}`,
+          title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
+          components: [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_title',
+                  label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                  style: 1,
+                  min_length: 1,
+                  max_length: 100,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_time',
+                  label: lang === 'ko' ? '시간 (HH:mm)' : 'Time (HH:mm)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 14:30' : 'e.g., 14:30',
+                  min_length: 5,
+                  max_length: 5,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_participants',
+                  label: lang === 'ko' ? '참석자' : 'Participants',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: @user1 @user2' : 'e.g., @user1 @user2',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'reminder_minutes',
+                  label: lang === 'ko' ? '알림 시간(분 전)' : 'Reminder Minutes',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 1,5,10' : 'e.g., 1,5,10',
+                  required: false,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'repeat_end_date',
+                  label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD)' : 'Repeat End Date (YYYY-MM-DD)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
+                  required: false,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+  }
+
+  // Handle monthly week selection for monthly_weekday
+  if (customId?.startsWith('monthly_week_select_')) {
+    const weekday = customId.replace('monthly_week_select_', '');
+    const weekOfMonth = data.values?.[0];
+    
+    return res.send({
+      type: InteractionResponseType.MODAL,
+      data: {
+        custom_id: `meeting_modal_monthly_weekday_${weekOfMonth}_${weekday}`,
+        title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_title',
+                label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                style: 1,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_time',
+                label: lang === 'ko' ? '시간 (HH:mm)' : 'Time (HH:mm)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 14:30' : 'e.g., 14:30',
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_participants',
+                label: lang === 'ko' ? '참석자' : 'Participants',
+                style: 1,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'reminder_minutes',
+                label: lang === 'ko' ? '알림 시간(분 전)' : 'Reminder Minutes',
+                style: 1,
+                required: false,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'repeat_end_date',
+                label: lang === 'ko' ? '반복 종료 날짜' : 'Repeat End Date',
+                style: 1,
+                required: false,
+              },
+            ],
+          },
+        ],
+      },
+    });
+  }
+
+  // Handle monthly_day selection
+  if (customId === 'monthly_day_select') {
+    const dayOfMonth = data.values?.[0];
+    
+    return res.send({
+      type: InteractionResponseType.MODAL,
+      data: {
+        custom_id: `meeting_modal_monthly_day_${dayOfMonth}`,
+        title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_title',
+                label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                style: 1,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_time',
+                label: lang === 'ko' ? '시간 (HH:mm)' : 'Time (HH:mm)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 14:30' : 'e.g., 14:30',
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_participants',
+                label: lang === 'ko' ? '참석자' : 'Participants',
+                style: 1,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'reminder_minutes',
+                label: lang === 'ko' ? '알림 시간(분 전)' : 'Reminder Minutes',
+                style: 1,
+                required: false,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'repeat_end_date',
+                label: lang === 'ko' ? '반복 종료 날짜' : 'Repeat End Date',
+                style: 1,
+                required: false,
+              },
+            ],
+          },
+        ],
+      },
+    });
+  }
+
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: 'Unknown component interaction',
+      flags: InteractionResponseFlags.EPHEMERAL,
+    },
+  });
+}
+
+/**
+ * Handle modal submit interactions
+ */
+async function handleModalSubmit(body, res) {
+  const { data, guild_id: guildId, channel, member } = body;
+  const channelId = channel?.id;
+  const userId = member?.user?.id;
+  
+  const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+  const lang = getGuildLanguage(settings);
+
+  if (!guildId) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('serverOnlyCommand', lang),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
+  const customId = data.custom_id;
+  const components = data.components || [];
+
+  // Extract values from modal components
+  const getComponentValue = (customId) => {
+    for (const row of components) {
+      const component = row.components?.[0];
+      if (component?.custom_id === customId) {
+        return component.value;
+      }
+    }
+    return null;
+  };
+
+  const title = getComponentValue('meeting_title');
+  const dateStr = getComponentValue('meeting_date');
+  const timeStr = getComponentValue('meeting_time');
+  const participantsStr = getComponentValue('meeting_participants');
+  const reminderMinutesStr = getComponentValue('reminder_minutes') || '15';
+  const repeatEndStr = getComponentValue('repeat_end_date');
+
+  // Parse modal custom_id to get repeat type and parameters
+  let repeatType = 'none';
+  let weekday = null;
+  let dayOfMonth = null;
+  let weekOfMonth = null;
+
+  if (customId.startsWith('meeting_modal_')) {
+    const modalId = customId.replace('meeting_modal_', '');
+    
+    if (modalId.startsWith('monthly_weekday_')) {
+      // Format: monthly_weekday_${weekOfMonth}_${weekday}
+      const parts = modalId.replace('monthly_weekday_', '').split('_');
+      repeatType = 'monthly_weekday';
+      weekOfMonth = parseInt(parts[0]);
+      weekday = parts[1];
+    } else if (modalId.startsWith('monthly_day_')) {
+      // Format: monthly_day_${dayOfMonth}
+      repeatType = 'monthly_day';
+      dayOfMonth = modalId.replace('monthly_day_', '');
+    } else {
+      // Format: ${repeatType}_${weekday} or ${repeatType}
+      const parts = modalId.split('_');
+      repeatType = parts[0]; // none, daily, biweekly, weekly
+      if (parts.length > 1) {
+        weekday = parts[1]; // For weekly/biweekly
+      }
+    }
+  }
+
+  // Calculate actual meeting date
+  let meetingDate;
+  
+  if (dateStr) {
+    // Full date string provided (for none, daily, biweekly)
+    meetingDate = new Date(dateStr);
+  } else if (timeStr && (weekday !== null || dayOfMonth !== null)) {
+    // Time string provided, need to calculate date based on repeat type
+    const now = new Date();
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    
+    if (repeatType === 'weekly' || repeatType === 'biweekly') {
+      // Find next occurrence of the weekday
+      meetingDate = getNextWeekday(now, parseInt(weekday), hours, minutes);
+    } else if (repeatType === 'monthly_day') {
+      // Find next occurrence of the day of month
+      meetingDate = getNextDayOfMonth(now, parseInt(dayOfMonth), hours, minutes);
+    } else if (repeatType === 'monthly_weekday') {
+      // Find next occurrence of nth weekday of month
+      meetingDate = getNextNthWeekday(now, weekOfMonth, parseInt(weekday), hours, minutes);
+    } else {
+      meetingDate = new Date(now);
+      meetingDate.setHours(hours, minutes, 0, 0);
+      if (meetingDate <= now) {
+        meetingDate.setDate(meetingDate.getDate() + 1);
+      }
+    }
+  } else {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', lang, { message: 'Invalid date/time format' }),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
+  if (isNaN(meetingDate.getTime())) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('invalidDate', lang),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
+  const participants = parseParticipants(participantsStr);
+  if (participants.length === 0) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', lang, { message: 'No valid participants found' }),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
+  // Parse reminder minutes
+  const reminderMinutesArray = reminderMinutesStr
+    .split(',')
+    .map(m => parseInt(m.trim()))
+    .filter(m => !isNaN(m) && m > 0)
+    .sort((a, b) => b - a);
+
+  if (reminderMinutesArray.length === 0) {
+    reminderMinutesArray.push(15);
+  }
+
+  // Parse repeat end date
+  let repeatEndDate = null;
+  if (repeatEndStr) {
+    repeatEndDate = new Date(repeatEndStr);
+    if (isNaN(repeatEndDate.getTime())) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('invalidDate', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+  }
+
+  // Calculate repeat interval and format repeat_type for database
+  let repeatInterval = null;
+  let dbRepeatType = repeatType;
+  
+  if (repeatType !== 'none') {
+    if (repeatType === 'daily') {
+      repeatInterval = 1;
+    } else if (repeatType === 'weekly') {
+      repeatInterval = 7;
+      dbRepeatType = `weekly:${weekday}`;
+    } else if (repeatType === 'biweekly') {
+      repeatInterval = 14;
+      dbRepeatType = `biweekly:${weekday}`;
+    } else if (repeatType === 'monthly_day') {
+      repeatInterval = 30; // Approximate
+      dbRepeatType = `monthly_day:${dayOfMonth}`;
+    } else if (repeatType === 'monthly_weekday') {
+      repeatInterval = 30; // Approximate
+      dbRepeatType = `monthly_weekday:${weekOfMonth}:${weekday}`;
+    }
+  }
+
+  const meetingChannelId = settings?.meeting_channel_id || channelId;
+
+  // Insert into database
+  const result = meetingQueries.insert.run(
+    guildId,
+    title,
+    meetingDate.toISOString(),
+    JSON.stringify(participants),
+    meetingChannelId,
+    JSON.stringify(reminderMinutesArray),
+    dbRepeatType === 'none' ? null : dbRepeatType,
+    repeatInterval,
+    repeatEndDate ? repeatEndDate.toISOString() : null
+  );
+
+  const meetingId = result.lastInsertRowid;
+
+  // Schedule reminders
+  const reminderTimes = reminderMinutesArray.map(minutes => {
+    const reminderTime = new Date(meetingDate.getTime() - minutes * 60 * 1000);
+    if (reminderTime > new Date()) {
+      scheduleMeetingReminder(meetingId, guildId, title, meetingDate, participants, meetingChannelId, minutes);
+      return { minutes, time: reminderTime };
+    }
+    return null;
+  }).filter(Boolean);
+
+  const reminderTimesText = reminderTimes.length > 0
+    ? reminderTimes.map(rt => {
+        const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
+        return `${formatDateTime(rt.time)} (${minutesText})`;
+      }).join('\n')
+    : t('allRemindersPassed', lang);
+
+  let repeatText = '';
+  if (repeatType !== 'none') {
+    const repeatKey = `repeat${repeatType.charAt(0).toUpperCase() + repeatType.slice(1)}`;
+    repeatText = t(repeatKey, lang, { 
+      endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
+    });
+  }
+
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: t('meetingScheduled', lang, {
+        title,
+        date: formatDateTime(meetingDate),
+        participants: participants.map(p => `<@${p}>`).join(', '),
+        reminderTimes: reminderTimesText,
+        repeatText,
+        id: meetingId,
+      }),
+      flags: InteractionResponseFlags.EPHEMERAL,
+    },
+  });
+}
+
+/**
+ * Helper function to get next occurrence of a weekday
+ */
+function getNextWeekday(fromDate, weekday, hours, minutes) {
+  const date = new Date(fromDate);
+  date.setHours(hours, minutes, 0, 0);
+  
+  const currentWeekday = date.getDay();
+  let daysUntilTarget = (weekday - currentWeekday + 7) % 7;
+  
+  // If today is the target weekday but time has passed, move to next week
+  if (daysUntilTarget === 0 && date <= fromDate) {
+    daysUntilTarget = 7;
+  }
+  
+  date.setDate(date.getDate() + daysUntilTarget);
+  return date;
+}
+
+/**
+ * Helper function to get next occurrence of a day of month
+ */
+function getNextDayOfMonth(fromDate, dayOfMonth, hours, minutes) {
+  const date = new Date(fromDate);
+  date.setDate(dayOfMonth);
+  date.setHours(hours, minutes, 0, 0);
+  
+  if (date <= fromDate) {
+    // Move to next month
+    date.setMonth(date.getMonth() + 1);
+    date.setDate(dayOfMonth);
+  }
+  
+  return date;
+}
+
+/**
+ * Helper function to get next occurrence of nth weekday of month
+ */
+function getNthWeekday(year, month, weekOfMonth, weekday) {
+  const firstDay = new Date(year, month, 1);
+  const firstWeekday = firstDay.getDay();
+  let date = 1 + ((weekday - firstWeekday + 7) % 7);
+  
+  if (weekOfMonth === -1) {
+    // Last week - find last occurrence
+    const lastDay = new Date(year, month + 1, 0);
+    const lastWeekday = lastDay.getDay();
+    date = lastDay.getDate() - ((lastWeekday - weekday + 7) % 7);
+  } else {
+    date += (weekOfMonth - 1) * 7;
+    const maxDay = new Date(year, month + 1, 0).getDate();
+    if (date > maxDay) {
+      // Fallback to last occurrence
+      const lastDay = new Date(year, month + 1, 0);
+      date = lastDay.getDate() - ((lastDay.getDay() - weekday + 7) % 7);
+    }
+  }
+  
+  return new Date(year, month, date);
+}
+
+function getNextNthWeekday(fromDate, weekOfMonth, weekday, hours, minutes) {
+  let date = getNthWeekday(fromDate.getFullYear(), fromDate.getMonth(), weekOfMonth, weekday);
+  date.setHours(hours, minutes, 0, 0);
+  
+  if (date <= fromDate) {
+    // Move to next month
+    const nextMonth = fromDate.getMonth() + 1;
+    date = getNthWeekday(fromDate.getFullYear(), nextMonth, weekOfMonth, weekday);
+    date.setHours(hours, minutes, 0, 0);
+  }
+  
+  return date;
+}
+
+/**
  * Handle setup-github command
  */
 async function handleSetupGitHub(data, guildId, channelId, res) {
@@ -859,16 +1724,54 @@ async function handleRecurringMeeting(meetingRow) {
     return; // Stop recurring
   }
 
+  // Parse repeat type
+  const repeatTypeStr = dbMeeting.repeatType || '';
+  let repeatType = repeatTypeStr;
+  let weekday = null;
+  let dayOfMonth = null;
+  let weekOfMonth = null;
+
+  if (repeatTypeStr.includes(':')) {
+    const parts = repeatTypeStr.split(':');
+    repeatType = parts[0];
+    
+    if (repeatType === 'weekly' || repeatType === 'biweekly') {
+      weekday = parseInt(parts[1]);
+    } else if (repeatType === 'monthly_day') {
+      dayOfMonth = parseInt(parts[1]);
+    } else if (repeatType === 'monthly_weekday') {
+      weekOfMonth = parseInt(parts[1]);
+      weekday = parseInt(parts[2]);
+    }
+  }
+
   // Calculate next date
-  const nextDate = new Date(currentDate);
-  if (dbMeeting.repeatType === 'daily') {
+  let nextDate;
+  const [hours, minutes] = [currentDate.getHours(), currentDate.getMinutes()];
+  
+  if (repeatType === 'daily') {
+    nextDate = new Date(currentDate);
     nextDate.setDate(nextDate.getDate() + 1);
-  } else if (dbMeeting.repeatType === 'weekly') {
-    nextDate.setDate(nextDate.getDate() + 7);
-  } else if (dbMeeting.repeatType === 'biweekly') {
-    nextDate.setDate(nextDate.getDate() + 14);
-  } else if (dbMeeting.repeatType === 'monthly') {
-    nextDate.setMonth(nextDate.getMonth() + 1);
+  } else if (repeatType === 'weekly' && weekday !== null) {
+    nextDate = getNextWeekday(new Date(currentDate.getTime() + 24 * 60 * 60 * 1000), weekday, hours, minutes);
+  } else if (repeatType === 'biweekly' && weekday !== null) {
+    // Find next occurrence 2 weeks from current
+    const twoWeeksLater = new Date(currentDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+    nextDate = getNextWeekday(twoWeeksLater, weekday, hours, minutes);
+  } else if (repeatType === 'monthly_day' && dayOfMonth !== null) {
+    nextDate = getNextDayOfMonth(new Date(currentDate.getTime() + 24 * 60 * 60 * 1000), dayOfMonth, hours, minutes);
+  } else if (repeatType === 'monthly_weekday' && weekOfMonth !== null && weekday !== null) {
+    nextDate = getNextNthWeekday(new Date(currentDate.getTime() + 24 * 60 * 60 * 1000), weekOfMonth, weekday, hours, minutes);
+  } else {
+    // Fallback for old format or unknown type
+    nextDate = new Date(currentDate);
+    if (repeatType === 'weekly') {
+      nextDate.setDate(nextDate.getDate() + 7);
+    } else if (repeatType === 'biweekly') {
+      nextDate.setDate(nextDate.getDate() + 14);
+    } else {
+      nextDate.setMonth(nextDate.getMonth() + 1);
+    }
   }
 
   // Check if next date exceeds end date

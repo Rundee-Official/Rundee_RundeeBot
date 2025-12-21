@@ -217,6 +217,15 @@ const TEST_MEETING_COMMAND = {
   ],
 };
 
+// Set meeting time command (interactive GUI)
+const SET_MEETING_TIME_COMMAND = {
+  name: 'set-meeting-time',
+  description: 'Schedule a meeting with interactive setup (GUI)',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+};
+
 const ALL_COMMANDS = [
   SCHEDULE_MEETING_COMMAND,
   LIST_MEETINGS_COMMAND,
@@ -227,6 +236,7 @@ const ALL_COMMANDS = [
   SETUP_GITHUB_COMMAND,
   SET_LANGUAGE_COMMAND,
   TEST_MEETING_COMMAND,
+  SET_MEETING_TIME_COMMAND,
 ];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
