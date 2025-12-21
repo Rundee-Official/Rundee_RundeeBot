@@ -751,26 +751,82 @@ async function handleMessageComponent(body, res) {
     }
     
     if (repeatType === 'none' || repeatType === 'biweekly') {
-      // For simple types, show participant selection first
+      // For simple types, show modal for meeting details
       return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        type: InteractionResponseType.MODAL,
         data: {
-          content: lang === 'ko' ? '참석자를 선택하세요 (유저 또는 역할, 복수 선택 가능):' : 'Select participants (users or roles, multiple selection allowed):',
+          custom_id: `meeting_modal_${repeatType}`,
+          title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
           components: [
             {
               type: 1,
               components: [
                 {
-                  type: 7, // MENTIONABLE_SELECT - allows both users and roles
-                  custom_id: `participant_select_${repeatType}`,
-                  placeholder: lang === 'ko' ? '참석자 선택 (유저 또는 역할)' : 'Select participants (users or roles)',
-                  min_values: 1,
-                  max_values: 25, // Discord limit
+                  type: 4,
+                  custom_id: 'meeting_title',
+                  label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                  style: 1,
+                  min_length: 1,
+                  max_length: 100,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_date',
+                  label: lang === 'ko' ? '날짜 및 시간 (YYYY-MM-DD HH:mm)' : 'Date & Time (YYYY-MM-DD HH:mm)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 2024-12-25 14:30' : 'e.g., 2024-12-25 14:30',
+                  min_length: 16,
+                  max_length: 16,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_participants',
+                  label: lang === 'ko' ? '참석자 (@멘션 또는 역할 멘션)' : 'Participants (@user or @role mentions)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: @user1 @역할1' : 'e.g., @user1 @role1',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'reminder_minutes',
+                  label: lang === 'ko' ? '알림 시간(분 전, 쉼표로 구분)' : 'Reminder Minutes (comma-separated)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 1,5,10 (기본값: 15)' : 'e.g., 1,5,10 (default: 15)',
+                  required: false,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'repeat_end_date',
+                  label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD, 선택사항)' : 'Repeat End Date (YYYY-MM-DD, optional)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
+                  required: false,
                 },
               ],
             },
           ],
-          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     } else if (repeatType === 'weekly' || repeatType === 'monthly_weekday') {
@@ -867,26 +923,82 @@ async function handleMessageComponent(body, res) {
         },
       });
     } else {
-      // For weekly/biweekly, show participant selection first
+      // For weekly/biweekly, show modal directly
       return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        type: InteractionResponseType.MODAL,
         data: {
-          content: lang === 'ko' ? '참석자를 선택하세요 (유저 또는 역할, 복수 선택 가능):' : 'Select participants (users or roles, multiple selection allowed):',
+          custom_id: `meeting_modal_${repeatType}_${weekday}`,
+          title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
           components: [
             {
               type: 1,
               components: [
                 {
-                  type: 7, // MENTIONABLE_SELECT
-                  custom_id: `participant_select_${repeatType}_${weekday}`,
-                  placeholder: lang === 'ko' ? '참석자 선택 (유저 또는 역할)' : 'Select participants (users or roles)',
-                  min_values: 1,
-                  max_values: 25,
+                  type: 4,
+                  custom_id: 'meeting_title',
+                  label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                  style: 1,
+                  min_length: 1,
+                  max_length: 100,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_time',
+                  label: lang === 'ko' ? '시간 (HH:mm)' : 'Time (HH:mm)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 14:30' : 'e.g., 14:30',
+                  min_length: 5,
+                  max_length: 5,
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'meeting_participants',
+                  label: lang === 'ko' ? '참석자 (@멘션 또는 역할 멘션)' : 'Participants (@user or @role mentions)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: @user1 @역할1' : 'e.g., @user1 @role1',
+                  required: true,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'reminder_minutes',
+                  label: lang === 'ko' ? '알림 시간(분 전, 쉼표로 구분)' : 'Reminder Minutes (comma-separated)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 1,5,10 (기본값: 15)' : 'e.g., 1,5,10 (default: 15)',
+                  required: false,
+                },
+              ],
+            },
+            {
+              type: 1,
+              components: [
+                {
+                  type: 4,
+                  custom_id: 'repeat_end_date',
+                  label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD, 선택사항)' : 'Repeat End Date (YYYY-MM-DD, optional)',
+                  style: 1,
+                  placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
+                  required: false,
                 },
               ],
             },
           ],
-          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -897,26 +1009,82 @@ async function handleMessageComponent(body, res) {
     const weekday = customId.replace('monthly_week_select_', '');
     const weekOfMonth = data.values?.[0];
     
-    // Show participant selection
+    // Show modal directly
     return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      type: InteractionResponseType.MODAL,
       data: {
-        content: lang === 'ko' ? '참석자를 선택하세요 (유저 또는 역할, 복수 선택 가능):' : 'Select participants (users or roles, multiple selection allowed):',
+        custom_id: `meeting_modal_monthly_weekday_${weekOfMonth}_${weekday}`,
+        title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
         components: [
           {
             type: 1,
             components: [
               {
-                type: 7, // MENTIONABLE_SELECT
-                custom_id: `participant_select_monthly_weekday_${weekOfMonth}_${weekday}`,
-                placeholder: lang === 'ko' ? '참석자 선택 (유저 또는 역할)' : 'Select participants (users or roles)',
-                min_values: 1,
-                max_values: 25,
+                type: 4,
+                custom_id: 'meeting_title',
+                label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                style: 1,
+                min_length: 1,
+                max_length: 100,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_time',
+                label: lang === 'ko' ? '시간 (HH:mm)' : 'Time (HH:mm)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 14:30' : 'e.g., 14:30',
+                min_length: 5,
+                max_length: 5,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_participants',
+                label: lang === 'ko' ? '참석자 (@멘션 또는 역할 멘션)' : 'Participants (@user or @role mentions)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: @user1 @역할1' : 'e.g., @user1 @role1',
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'reminder_minutes',
+                label: lang === 'ko' ? '알림 시간(분 전, 쉼표로 구분)' : 'Reminder Minutes (comma-separated)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 1,5,10 (기본값: 15)' : 'e.g., 1,5,10 (default: 15)',
+                required: false,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'repeat_end_date',
+                label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD, 선택사항)' : 'Repeat End Date (YYYY-MM-DD, optional)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
+                required: false,
               },
             ],
           },
         ],
-        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   }
@@ -1012,193 +1180,86 @@ async function handleMessageComponent(body, res) {
   if (customId === 'monthly_day_select') {
     const dayOfMonth = data.values?.[0];
     
-    // Show participant selection
+    // Show modal directly
     return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      type: InteractionResponseType.MODAL,
       data: {
-        content: lang === 'ko' ? '참석자를 선택하세요 (유저 또는 역할, 복수 선택 가능):' : 'Select participants (users or roles, multiple selection allowed):',
+        custom_id: `meeting_modal_monthly_day_${dayOfMonth}`,
+        title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
         components: [
           {
             type: 1,
             components: [
               {
-                type: 7, // MENTIONABLE_SELECT
-                custom_id: `participant_select_monthly_day_${dayOfMonth}`,
-                placeholder: lang === 'ko' ? '참석자 선택 (유저 또는 역할)' : 'Select participants (users or roles)',
-                min_values: 1,
-                max_values: 25,
+                type: 4,
+                custom_id: 'meeting_title',
+                label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                style: 1,
+                min_length: 1,
+                max_length: 100,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_time',
+                label: lang === 'ko' ? '시간 (HH:mm)' : 'Time (HH:mm)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 14:30' : 'e.g., 14:30',
+                min_length: 5,
+                max_length: 5,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_participants',
+                label: lang === 'ko' ? '참석자 (@멘션 또는 역할 멘션)' : 'Participants (@user or @role mentions)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: @user1 @역할1' : 'e.g., @user1 @role1',
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'reminder_minutes',
+                label: lang === 'ko' ? '알림 시간(분 전, 쉼표로 구분)' : 'Reminder Minutes (comma-separated)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 1,5,10 (기본값: 15)' : 'e.g., 1,5,10 (default: 15)',
+                required: false,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'repeat_end_date',
+                label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD, 선택사항)' : 'Repeat End Date (YYYY-MM-DD, optional)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
+                required: false,
               },
             ],
           },
         ],
-        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   }
 
-  // Handle participant selection - show modal with meeting details
-  if (customId?.startsWith('participant_select_')) {
-    const participantSelectId = customId.replace('participant_select_', '');
-    const selectedValues = data.values || []; // Array of user IDs and role IDs (strings)
-    // Discord provides IDs in data.values and full objects in data.resolved
-    // For MENTIONABLE select, resolved data is at data.resolved (since data is already destructured from body.data)
-    const resolved = data.resolved || {};
-    
-    // Convert selected values to participant format
-    const participants = selectedValues.map(id => {
-      // Check if it's a role or user by checking resolved data
-      // If ID exists in resolved.roles, it's a role; if in resolved.users, it's a user
-      if (resolved.roles && resolved.roles[id]) {
-        return `r:${id}`; // Role
-      } else if (resolved.users && resolved.users[id]) {
-        return `u:${id}`; // User
-      }
-      // Fallback: assume user if resolved data is not available (shouldn't happen in normal cases)
-      // This can happen if the interaction data is incomplete, but we'll assume user as default
-      console.warn(`Could not determine type for participant ID: ${id}, assuming user`);
-      return `u:${id}`;
-    }).filter(Boolean);
-    
-    if (participants.length === 0) {
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: t('errorOccurred', lang, { message: 'No participants selected' }),
-          flags: InteractionResponseFlags.EPHEMERAL,
-        },
-      });
-    }
-
-    // Store participants temporarily in custom_id for the modal
-    // We'll encode them in the modal custom_id
-    const participantsEncoded = encodeURIComponent(JSON.stringify(participants));
-    const modalCustomId = `meeting_modal_${participantSelectId}_${participantsEncoded}`;
-
-    // Determine repeat type and parameters from participantSelectId
-    let repeatType = 'none';
-    let weekday = null;
-    let dayOfMonth = null;
-    let weekOfMonth = null;
-    let excludeStr = '';
-
-    if (participantSelectId === 'none' || participantSelectId === 'biweekly') {
-      repeatType = participantSelectId;
-    } else if (participantSelectId.startsWith('daily')) {
-      if (participantSelectId.startsWith('daily_except_')) {
-        repeatType = 'daily_except';
-        excludeStr = participantSelectId.replace('daily_except_', '');
-        weekday = excludeStr ? excludeStr.split(',').map(w => parseInt(w)) : [];
-      } else {
-        repeatType = 'daily';
-        weekday = [];
-      }
-    } else if (participantSelectId.startsWith('weekly_')) {
-      repeatType = 'weekly';
-      weekday = participantSelectId.replace('weekly_', '');
-    } else if (participantSelectId.startsWith('monthly_weekday_')) {
-      repeatType = 'monthly_weekday';
-      const parts = participantSelectId.replace('monthly_weekday_', '').split('_');
-      weekOfMonth = parseInt(parts[0]);
-      weekday = parts[1];
-    } else if (participantSelectId.startsWith('monthly_day_')) {
-      repeatType = 'monthly_day';
-      dayOfMonth = participantSelectId.replace('monthly_day_', '');
-    }
-
-    // Show modal without participants field (already selected)
-    // Build modal components based on repeat type
-    const modalComponents = [
-      {
-        type: 1,
-        components: [
-          {
-            type: 4,
-            custom_id: 'meeting_title',
-            label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
-            style: 1,
-            min_length: 1,
-            max_length: 100,
-            required: true,
-          },
-        ],
-      },
-    ];
-
-    // Add date/time input based on repeat type
-    if (repeatType === 'none' || repeatType === 'biweekly' || repeatType === 'daily' || repeatType === 'daily_except') {
-      modalComponents.push({
-        type: 1,
-        components: [
-          {
-            type: 4,
-            custom_id: 'meeting_date',
-            label: lang === 'ko' ? '날짜 및 시간 (YYYY-MM-DD HH:mm)' : 'Date & Time (YYYY-MM-DD HH:mm)',
-            style: 1,
-            placeholder: lang === 'ko' ? '예: 2024-12-25 14:30' : 'e.g., 2024-12-25 14:30',
-            min_length: 16,
-            max_length: 16,
-            required: true,
-          },
-        ],
-      });
-    } else {
-      // For weekly/monthly, only time is needed
-      modalComponents.push({
-        type: 1,
-        components: [
-          {
-            type: 4,
-            custom_id: 'meeting_time',
-            label: lang === 'ko' ? '시간 (HH:mm)' : 'Time (HH:mm)',
-            style: 1,
-            placeholder: lang === 'ko' ? '예: 14:30' : 'e.g., 14:30',
-            min_length: 5,
-            max_length: 5,
-            required: true,
-          },
-        ],
-      });
-    }
-
-    // Add reminder minutes and repeat end date
-    modalComponents.push(
-      {
-        type: 1,
-        components: [
-          {
-            type: 4,
-            custom_id: 'reminder_minutes',
-            label: lang === 'ko' ? '알림 시간(분 전, 쉼표로 구분)' : 'Reminder Minutes (comma-separated)',
-            style: 1,
-            placeholder: lang === 'ko' ? '예: 1,5,10 (기본값: 15)' : 'e.g., 1,5,10 (default: 15)',
-            required: false,
-          },
-        ],
-      },
-      {
-        type: 1,
-        components: [
-          {
-            type: 4,
-            custom_id: 'repeat_end_date',
-            label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD, 선택사항)' : 'Repeat End Date (YYYY-MM-DD, optional)',
-            style: 1,
-            placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
-            required: false,
-          },
-        ],
-      }
-    );
-
-    return res.send({
-      type: InteractionResponseType.MODAL,
-      data: {
-        custom_id: modalCustomId,
-        title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
-        components: modalComponents,
-      },
-    });
-  }
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
