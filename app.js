@@ -223,8 +223,18 @@ async function handleScheduleMeeting(data, guildId, channelId, res) {
     reminderMinutesArray.push(15);
   }
 
-  // Parse date
-  const meetingDate = new Date(dateStr);
+  // Parse date - assume KST (Asia/Seoul) timezone
+  // Convert "YYYY-MM-DD HH:mm" to ISO string with KST timezone
+  const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+  let meetingDate;
+  if (dateMatch) {
+    // Parse as KST (UTC+9)
+    const [, year, month, day, hour, minute] = dateMatch;
+    meetingDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:00+09:00`);
+  } else {
+    meetingDate = new Date(dateStr);
+  }
+  
   if (isNaN(meetingDate.getTime())) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
