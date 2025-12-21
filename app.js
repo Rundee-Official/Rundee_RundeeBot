@@ -77,6 +77,8 @@ app.post('/interactions',
             return await handleSetGithubChannel(data, guildId, channelId, res);
           } else if (name === 'setup-github') {
             return await handleSetupGitHub(data, guildId, channelId, res);
+          } else if (name === 'test-meeting') {
+            return await handleTestMeeting(data, guildId, channelId, res);
           }
 
           console.error(`unknown command: ${name}`);
@@ -595,6 +597,68 @@ async function handleSetLanguage(data, guildId, res) {
       },
     });
   }
+}
+
+/**
+ * Handle test-meeting command (creates a meeting 1 minute from now for testing)
+ */
+async function handleTestMeeting(data, guildId, channelId, res) {
+  const settings = guildSettingsQueries.get.get(guildId);
+  const lang = getGuildLanguage(settings);
+  
+  if (!guildId) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('serverOnlyCommand', lang),
+      },
+    });
+  }
+
+  // Create a meeting 1 minute from now
+  const now = new Date();
+  const testDate = new Date(now.getTime() + 60 * 1000); // 1 minute from now
+  
+  const participantsStr = data.options?.find(opt => opt.name === 'participants')?.value || '<@' + (data.member?.user?.id || '') + '>';
+  const participants = parseParticipants(participantsStr);
+  
+  // Get meeting channel from settings or use current channel
+  const meetingChannelId = settings?.meeting_channel_id || channelId;
+  
+  const title = 'Test Meeting';
+  const reminderMinutesArray = [1]; // 1 minute reminder (which should trigger almost immediately)
+  
+  // Insert into database
+  const result = meetingQueries.insert.run(
+    guildId,
+    title,
+    testDate.toISOString(),
+    JSON.stringify(participants),
+    meetingChannelId,
+    JSON.stringify(reminderMinutesArray),
+    null, // no repeat
+    null,
+    null
+  );
+
+  const meetingId = result.lastInsertRowid;
+
+  // Schedule reminder
+  scheduleMeetingReminder(meetingId, guildId, title, testDate, participants, meetingChannelId, 1);
+
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: t('meetingScheduled', lang, {
+        title,
+        date: formatDateTime(testDate),
+        participants: participants.map(p => `<@${p}>`).join(', '),
+        reminderTimes: `${formatDateTime(new Date(testDate.getTime() - 60 * 1000))} (1 min before)`,
+        repeatText: '',
+        id: meetingId,
+      }) + '\n\n⚠️ **This is a test meeting. Reminder should arrive in about 1 minute.**',
+    },
+  });
 }
 
 /**

@@ -200,6 +200,23 @@ const SET_LANGUAGE_COMMAND = {
   ],
 };
 
+// Test meeting command (for testing purposes)
+const TEST_MEETING_COMMAND = {
+  name: 'test-meeting',
+  description: 'Create a test meeting 1 minute from now (for testing)',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+  options: [
+    {
+      type: 3, // STRING
+      name: 'participants',
+      description: 'Participants to mention',
+      required: false,
+    },
+  ],
+};
+
 const ALL_COMMANDS = [
   SCHEDULE_MEETING_COMMAND,
   LIST_MEETINGS_COMMAND,
@@ -209,6 +226,7 @@ const ALL_COMMANDS = [
   SET_GITHUB_CHANNEL_COMMAND,
   SETUP_GITHUB_COMMAND,
   SET_LANGUAGE_COMMAND,
+  TEST_MEETING_COMMAND,
 ];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
