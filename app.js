@@ -1404,6 +1404,18 @@ async function handleModalSubmit(body, res) {
     });
   }
 
+  // Parse participants from text input
+  if (!participantsStr) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', lang, { message: 'No participants provided' }),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+  const participants = parseParticipants(participantsStr);
+
   if (participants.length === 0) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
