@@ -261,10 +261,31 @@ async function handleListMeetings(guildId, res) {
     })
     .join('\n\n');
 
+  // Create delete buttons for meetings (max 5 rows, 5 buttons per row = 25 meetings)
+  const components = [];
+  if (upcomingMeetings.length > 0 && upcomingMeetings.length <= 25) {
+    // Group meetings into rows of 5
+    for (let i = 0; i < upcomingMeetings.length; i += 5) {
+      const rowMeetings = upcomingMeetings.slice(i, i + 5);
+      const buttonRow = {
+        type: 1, // ACTION_ROW
+        components: rowMeetings.map(m => ({
+          type: 2, // BUTTON
+          style: 4, // DANGER (red)
+          label: m.title.length > 75 ? m.title.substring(0, 72) + '...' : m.title,
+          custom_id: `delete_meeting_${m.id}`,
+          emoji: { name: '🗑️' },
+        })),
+      };
+      components.push(buttonRow);
+    }
+  }
+
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
       content: t('meetingsList', lang, { list: meetingList }),
+      components: components.length > 0 ? components : undefined,
     },
   });
 }
@@ -340,14 +361,23 @@ async function handleEditMeeting(data, res) {
 
   const dateOption = data.options?.find(opt => opt.name === 'date');
   if (dateOption) {
-    date = new Date(dateOption.value);
-    if (isNaN(date.getTime())) {
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: t('invalidDate', lang),
-        },
-      });
+    date = parseRelativeDate(dateOption.value);
+    if (!date) {
+      date = new Date(dateOption.value);
+      if (isNaN(date.getTime())) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: t('invalidDate', lang) + (lang === 'ko' ? '\n\n예: 2025-12-25 14:30, 1시간 후, 내일 오후 3시' : '\n\nExamples: 2025-12-25 14:30, 1 hour later, tomorrow 3pm'),
+          },
+        });
+      }
+    }
+    
+    // Check for conflicts (excluding current meeting)
+    const conflictWarning = checkMeetingConflict(meeting.guild_id, date, meetingId);
+    if (conflictWarning) {
+      // Still allow the edit, but show warning
     }
   }
 
@@ -376,15 +406,23 @@ async function handleEditMeeting(data, res) {
     meetingId
   );
 
+  const editedMessage = t('meetingEdited', lang, {
+    title,
+    date: formatDateTime(date),
+    participants: formatParticipants(participants),
+    id: meetingId,
+  });
+  
+  // Check for conflicts if date was changed
+  const conflictWarning = dateOption ? checkMeetingConflict(meeting.guild_id, date, meetingId) : null;
+  const finalMessage = conflictWarning 
+    ? `${editedMessage}\n\n${conflictWarning}`
+    : editedMessage;
+
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      content: t('meetingEdited', lang, {
-        title,
-        date: formatDateTime(date),
-        participants: formatParticipants(participants),
-        id: meetingId,
-      }),
+      content: finalMessage,
     },
   });
 }
@@ -707,15 +745,19 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       });
     }
 
-    // Parse and validate date
-    let meetingDate = new Date(dateStr);
-    if (isNaN(meetingDate.getTime())) {
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: t('invalidDate', lang),
-        },
-      });
+    // Parse and validate date (supports relative time)
+    let meetingDate = parseRelativeDate(dateStr);
+    if (!meetingDate) {
+      // Fallback to standard date parsing
+      meetingDate = new Date(dateStr);
+      if (isNaN(meetingDate.getTime())) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: t('invalidDate', lang) + (lang === 'ko' ? '\n\n예: 2025-12-25 14:30, 1시간 후, 내일 오후 3시' : '\n\nExamples: 2025-12-25 14:30, 1 hour later, tomorrow 3pm'),
+          },
+        });
+      }
     }
 
     // Parse participants
@@ -790,17 +832,23 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       : t('allRemindersPassed', lang);
 
     // Single meeting - no repeat text
+    const scheduledMessage = t('meetingScheduled', lang, {
+      title,
+      date: formatDateTime(meetingDate),
+      participants: formatParticipants(participants),
+      reminderTimes: reminderTimesText,
+      repeatText: '',
+      id: meetingId,
+    });
+    
+    const finalMessage = conflictWarning 
+      ? `${scheduledMessage}\n\n${conflictWarning}`
+      : scheduledMessage;
+    
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: t('meetingScheduled', lang, {
-          title,
-          date: formatDateTime(meetingDate),
-          participants: formatParticipants(participants),
-          reminderTimes: reminderTimesText,
-          repeatText: '',
-          id: meetingId,
-        }),
+        content: finalMessage,
       },
     });
   } catch (error) {
@@ -843,8 +891,49 @@ async function handleMessageComponent(body, res) {
   const componentType = data.component_type;
   const customId = data.custom_id;
 
-  // No GUI components for meeting scheduling - all handled via command arguments
-  // Return error for any component interactions (no GUI components should be triggered)
+  // Handle delete meeting button
+  if (componentType === 2 && customId && customId.startsWith('delete_meeting_')) {
+    const meetingId = parseInt(customId.replace('delete_meeting_', ''));
+    
+    if (isNaN(meetingId)) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Invalid meeting ID' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+
+    const meeting = meetingQueries.getById.get(meetingId);
+    if (!meeting || meeting.guild_id !== guildId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('meetingNotFound', lang, { id: meetingId }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+
+    const meetingTitle = meeting.title;
+    const meetingDate = formatDateTime(new Date(meeting.date));
+    
+    meetingQueries.delete.run(meetingId);
+
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('meetingDeleted', lang, {
+          title: meetingTitle,
+          date: meetingDate,
+        }),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+
+  // Unknown component interaction
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
@@ -1162,17 +1251,26 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
     });
 
+    // Check for conflicts with first occurrence
+    const conflictWarning = checkMeetingConflict(guildId, meetingDate, null);
+    
+    const scheduledMessage = t('meetingScheduled', lang, {
+      title,
+      date: formatDateTime(meetingDate),
+      participants: formatParticipants(participants),
+      reminderTimes: reminderTimesText,
+      repeatText,
+      id: meetingId,
+    });
+    
+    const finalMessage = conflictWarning 
+      ? `${scheduledMessage}\n\n${conflictWarning}`
+      : scheduledMessage;
+
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
-        content: t('meetingScheduled', lang, {
-          title,
-          date: formatDateTime(meetingDate),
-          participants: formatParticipants(participants),
-          reminderTimes: reminderTimesText,
-          repeatText,
-          id: meetingId,
-        }),
+        content: finalMessage,
       },
     });
   } catch (error) {
@@ -1486,6 +1584,36 @@ function formatParticipantsMentions(participants) {
     // Backward compatibility: plain number is treated as user ID
     return `<@${p}>`;
   }).join(' ');
+}
+
+/**
+ * Check for conflicting meetings at the same time
+ * @param {string} guildId - Guild ID
+ * @param {Date} meetingDate - Date of the meeting to check
+ * @param {number|null} excludeMeetingId - Meeting ID to exclude from check (for edits)
+ * @returns {string|null} Warning message if conflict found, null otherwise
+ */
+function checkMeetingConflict(guildId, meetingDate, excludeMeetingId = null) {
+  const now = new Date();
+  const meetings = guildId
+    ? meetingQueries.getUpcomingByGuild.all(guildId)
+    : meetingQueries.getUpcoming.all();
+  
+  // Check for meetings within 30 minutes of the new meeting time
+  const conflictWindow = 30 * 60 * 1000; // 30 minutes in milliseconds
+  const conflicts = meetings.filter(m => {
+    if (excludeMeetingId && m.id === excludeMeetingId) return false;
+    const existingDate = new Date(m.date);
+    const timeDiff = Math.abs(existingDate.getTime() - meetingDate.getTime());
+    return timeDiff < conflictWindow;
+  });
+  
+  if (conflicts.length > 0) {
+    const conflictList = conflicts.map(m => `- ${m.title} (${formatDateTime(new Date(m.date))})`).join('\n');
+    return `⚠️ Warning: There are ${conflicts.length} meeting(s) scheduled at a similar time:\n${conflictList}`;
+  }
+  
+  return null;
 }
 
 /**
@@ -1879,6 +2007,114 @@ async function handleGitHubIssue(payload, guilds) {
       console.error(`Error sending GitHub issue notification to guild ${guild.guild_id}:`, error);
     }
   }
+}
+
+/**
+ * Parse relative date string to Date object
+ * Supports: "1시간 후", "2 hours later", "내일 오후 3시", "tomorrow 3pm", "다음 주 월요일", "next Monday"
+ * @param {string} dateStr - Relative date string or standard date format
+ * @param {Date} baseDate - Base date to calculate from (default: now)
+ * @returns {Date|null} Parsed date or null if invalid
+ */
+function parseRelativeDate(dateStr, baseDate = new Date()) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  
+  const str = dateStr.trim().toLowerCase();
+  
+  // Try standard date format first (YYYY-MM-DD HH:mm)
+  const standardDate = new Date(dateStr);
+  if (!isNaN(standardDate.getTime())) {
+    return standardDate;
+  }
+  
+  // Relative time patterns (Korean and English)
+  const patterns = [
+    // "N시간 후", "N hours later"
+    { regex: /(\d+)\s*(시간|hour|hours|h)\s*(후|later|from now)/, unit: 'hours' },
+    { regex: /(\d+)\s*(분|minute|minutes|min|m)\s*(후|later|from now)/, unit: 'minutes' },
+    { regex: /(\d+)\s*(일|day|days|d)\s*(후|later|from now)/, unit: 'days' },
+    
+    // "내일", "tomorrow"
+    { regex: /^(내일|tomorrow)$/, unit: 'days', value: 1 },
+    
+    // "모레", "day after tomorrow"
+    { regex: /^(모레|day after tomorrow)$/, unit: 'days', value: 2 },
+    
+    // "N일 후", "in N days"
+    { regex: /^(\d+)\s*(일|days?|d)\s*(후|later|from now|in)?$/, unit: 'days' },
+    
+    // "오늘", "today" + time
+    { regex: /^(오늘|today)\s+(\d{1,2})\s*:?\s*(\d{0,2})\s*(오후|pm|오전|am)?/i, isToday: true },
+    
+    // "내일", "tomorrow" + time
+    { regex: /^(내일|tomorrow)\s+(\d{1,2})\s*:?\s*(\d{0,2})\s*(오후|pm|오전|am)?/i, isTomorrow: true },
+    
+    // "오후/오전 N시", "N pm/am"
+    { regex: /(오후|pm)\s*(\d{1,2})\s*:?\s*(\d{0,2})?/i, isPM: true },
+    { regex: /(오전|am)\s*(\d{1,2})\s*:?\s*(\d{0,2})?/i, isAM: true },
+  ];
+  
+  for (const pattern of patterns) {
+    const match = str.match(pattern.regex);
+    if (match) {
+      const date = new Date(baseDate);
+      
+      if (pattern.isToday || pattern.isTomorrow) {
+        if (pattern.isTomorrow) {
+          date.setDate(date.getDate() + 1);
+        }
+        const hour = parseInt(match[2]);
+        const minute = parseInt(match[3] || '0');
+        const period = match[4]?.toLowerCase();
+        
+        let finalHour = hour;
+        if (period === 'pm' || period === '오후') {
+          if (hour !== 12) finalHour = hour + 12;
+        } else if (period === 'am' || period === '오전') {
+          if (hour === 12) finalHour = 0;
+        } else if (hour < 12) {
+          // Assume PM if no period specified and hour < 12
+          finalHour = hour;
+        }
+        
+        date.setHours(finalHour, minute, 0, 0);
+        return date;
+      }
+      
+      if (pattern.isPM || pattern.isAM) {
+        const hour = parseInt(match[2]);
+        const minute = parseInt(match[3] || '0');
+        let finalHour = hour;
+        
+        if (pattern.isPM && hour !== 12) {
+          finalHour = hour + 12;
+        } else if (pattern.isAM && hour === 12) {
+          finalHour = 0;
+        }
+        
+        date.setHours(finalHour, minute, 0, 0);
+        // If the time has passed today, set for tomorrow
+        if (date < baseDate) {
+          date.setDate(date.getDate() + 1);
+        }
+        return date;
+      }
+      
+      const value = pattern.value !== undefined ? pattern.value : parseInt(match[1]);
+      
+      if (pattern.unit === 'hours') {
+        date.setHours(date.getHours() + value);
+      } else if (pattern.unit === 'minutes') {
+        date.setMinutes(date.getMinutes() + value);
+      } else if (pattern.unit === 'days') {
+        date.setDate(date.getDate() + value);
+      }
+      
+      return date;
+    }
+  }
+  
+  return null;
 }
 
 /**
