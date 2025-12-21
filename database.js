@@ -5,8 +5,12 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const dbPath = join(__dirname, 'rundee-bot.db');
+// Use persistent storage path if available (Railway volume or /tmp for persistence)
+// Railway volumes are mounted at /app/data or we can use /tmp which persists across restarts
+const persistentDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DATA_DIR || '/tmp';
+const dbPath = join(persistentDir, 'rundee-bot.db');
 console.log('Initializing database at:', dbPath);
+console.log('Persistent directory:', persistentDir);
 
 let db;
 try {
