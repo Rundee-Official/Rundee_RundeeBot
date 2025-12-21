@@ -246,6 +246,12 @@ const SET_RECURRING_MEETING_COMMAND = {
     },
     {
       type: 3, // STRING
+      name: 'exclude_weekdays',
+      description: 'Exclude weekdays for daily meetings (comma-separated: 0=Sun,1=Mon,...,6=Sat) (daily 타입에서만 사용)',
+      required: false,
+    },
+    {
+      type: 3, // STRING
       name: 'reminder_minutes',
       description: 'Reminder minutes before meeting (comma-separated) (예: 1,5,10)',
       required: false,

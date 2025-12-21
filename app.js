@@ -8,6 +8,9 @@ import 'dotenv/config';
 import express from 'express';
 import cron from 'node-cron';
 import crypto from 'crypto';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import {
   InteractionResponseFlags,
   InteractionResponseType,
@@ -17,6 +20,9 @@ import {
 import { DiscordRequest } from './utils.js';
 import db, { meetingQueries, guildSettingsQueries } from './database.js';
 import { t, getGuildLanguage } from './messages.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -39,6 +45,30 @@ app.use('/webhook/github', express.raw({ type: 'application/json' }), (req, res,
 // Health check endpoint
 app.get('/', (req, res) => {
   res.send('Rundee Bot is running!');
+});
+
+// Terms of Service page
+app.get('/terms-of-service', (req, res) => {
+  try {
+    const html = readFileSync(join(__dirname, 'public', 'terms-of-service.html'), 'utf8');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    console.error('Error serving terms of service:', error);
+    res.status(500).send('Terms of Service page not available');
+  }
+});
+
+// Privacy Policy page
+app.get('/privacy-policy', (req, res) => {
+  try {
+    const html = readFileSync(join(__dirname, 'public', 'privacy-policy.html'), 'utf8');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    console.error('Error serving privacy policy:', error);
+    res.status(500).send('Privacy Policy page not available');
+  }
 });
 
 // Discord interactions endpoint
@@ -878,6 +908,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
     const weekday = getOption('weekday');
     const dayOfMonth = getOption('day_of_month');
     const weekOfMonth = getOption('week_of_month');
+    const excludeWeekdaysStr = getOption('exclude_weekdays');
     const reminderMinutesStr = getOption('reminder_minutes') || '15';
     const repeatEndStr = getOption('repeat_end_date');
     
@@ -1013,6 +1044,15 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       }
     }
 
+    // Parse excluded weekdays for daily meetings
+    let excludedWeekdays = [];
+    if (repeatType === 'daily' && excludeWeekdaysStr) {
+      excludedWeekdays = excludeWeekdaysStr
+        .split(',')
+        .map(w => parseInt(w.trim()))
+        .filter(w => !isNaN(w) && w >= 0 && w <= 6);
+    }
+
     // Calculate first meeting date based on repeat type
     const now = new Date();
     let meetingDate;
@@ -1023,6 +1063,13 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       meetingDate.setHours(hours, minutes, 0, 0);
       if (meetingDate <= now) {
         meetingDate.setDate(meetingDate.getDate() + 1);
+      }
+      
+      // Skip excluded weekdays (max 7 iterations to avoid infinite loop)
+      let attempts = 0;
+      while (excludedWeekdays.includes(meetingDate.getDay()) && attempts < 7) {
+        meetingDate.setDate(meetingDate.getDate() + 1);
+        attempts++;
       }
     } else if (repeatType === 'weekly' || repeatType === 'biweekly') {
       // Find next occurrence of the weekday
@@ -1048,6 +1095,11 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
     
     if (repeatType === 'daily') {
       repeatInterval = 1;
+      if (excludedWeekdays.length > 0) {
+        // Format: daily_except:0,6 (excluded weekdays sorted)
+        const excludedStr = excludedWeekdays.sort((a, b) => a - b).join(',');
+        dbRepeatType = `daily_except:${excludedStr}`;
+      }
     } else if (repeatType === 'weekly') {
       repeatInterval = 7;
       dbRepeatType = `weekly:${weekday}`;
