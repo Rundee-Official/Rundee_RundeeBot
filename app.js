@@ -695,8 +695,9 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
   // Parse and update repository
   let repositoryInfo = null;
   try {
-    const urlPattern = /(?:https?:\/\/)?(?:www\.)?github\.com\/([\w\-\.]+)\/([\w\-\.]+)/i;
-    const match = repositoryUrl.match(urlPattern);
+    // Support formats: https://github.com/user/repo.git, https://github.com/user/repo, user/repo.git, user/repo
+    const urlPattern = /(?:https?:\/\/)?(?:www\.)?github\.com\/([\w\-\.]+)\/([\w\-\.]+?)(?:\.git)?\/?$/i;
+    const match = repositoryUrl.trim().match(urlPattern);
     
     if (match) {
       repositoryInfo = {
@@ -707,9 +708,9 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
       };
       guildSettingsQueries.setGithubRepository.run(guildId, repositoryInfo.full_name);
     } else {
-      // Try format: user/repo
-      const simplePattern = /^([\w\-\.]+)\/([\w\-\.]+)$/i;
-      const simpleMatch = repositoryUrl.match(simplePattern);
+      // Try format: user/repo.git or user/repo
+      const simplePattern = /^([\w\-\.]+)\/([\w\-\.]+?)(?:\.git)?$/i;
+      const simpleMatch = repositoryUrl.trim().match(simplePattern);
       
       if (simpleMatch) {
         repositoryInfo = {
