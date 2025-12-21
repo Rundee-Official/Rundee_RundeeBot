@@ -129,6 +129,12 @@ export const guildSettingsQueries = {
     VALUES (?, ?)
     ON CONFLICT(guild_id) DO UPDATE SET github_repository = excluded.github_repository, updated_at = CURRENT_TIMESTAMP
   `),
+  
+  setLanguage: db.prepare(`
+    INSERT INTO guild_settings (guild_id, language)
+    VALUES (?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET language = excluded.language, updated_at = CURRENT_TIMESTAMP
+  `),
 };
 
 export default db;
