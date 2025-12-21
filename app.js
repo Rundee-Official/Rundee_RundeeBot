@@ -1040,9 +1040,9 @@ async function handleMessageComponent(body, res) {
   if (customId?.startsWith('participant_select_')) {
     const participantSelectId = customId.replace('participant_select_', '');
     const selectedValues = data.values || []; // Array of user IDs and role IDs (strings)
-    // Discord provides IDs in data.values and full objects in body.data.resolved
-    // Check if resolved data is available to distinguish between users and roles
-    const resolved = body?.data?.resolved || {};
+    // Discord provides IDs in data.values and full objects in data.resolved
+    // For MENTIONABLE select, resolved data is at data.resolved (since data is already destructured from body.data)
+    const resolved = data.resolved || {};
     
     // Convert selected values to participant format
     const participants = selectedValues.map(id => {
