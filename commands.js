@@ -152,10 +152,10 @@ const SET_LANGUAGE_COMMAND = {
   ],
 };
 
-// Schedule meeting command
+// Schedule single meeting command (one-time meeting)
 const SET_MEETING_TIME_COMMAND = {
   name: 'set-meeting-time',
-  description: 'Schedule a meeting (회의 일정을 등록합니다)',
+  description: 'Schedule a single meeting (단일 회의 일정을 등록합니다)',
   type: 1,
   integration_types: [0, 1],
   contexts: [0, 1, 2],
@@ -180,11 +180,45 @@ const SET_MEETING_TIME_COMMAND = {
     },
     {
       type: 3, // STRING
+      name: 'reminder_minutes',
+      description: 'Reminder minutes before meeting (comma-separated) (예: 1,5,10)',
+      required: false,
+    },
+  ],
+};
+
+// Schedule recurring meeting command
+const SET_RECURRING_MEETING_COMMAND = {
+  name: 'set-recurring-meeting',
+  description: 'Schedule a recurring meeting (반복 회의 일정을 등록합니다)',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+  options: [
+    {
+      type: 3, // STRING
+      name: 'title',
+      description: 'Meeting title (회의 제목)',
+      required: true,
+    },
+    {
+      type: 3, // STRING
+      name: 'time',
+      description: 'Time (HH:mm) (예: 14:30)',
+      required: true,
+    },
+    {
+      type: 3, // STRING
+      name: 'participants',
+      description: 'Participants (@mentions or @role mentions) (참석자)',
+      required: true,
+    },
+    {
+      type: 3, // STRING
       name: 'repeat_type',
       description: 'Repeat type (반복 주기)',
-      required: false,
+      required: true,
       choices: [
-        { name: 'No Repeat', value: 'none' },
         { name: 'Daily', value: 'daily' },
         { name: 'Weekly', value: 'weekly' },
         { name: 'Bi-weekly', value: 'biweekly' },
@@ -195,19 +229,19 @@ const SET_MEETING_TIME_COMMAND = {
     {
       type: 4, // INTEGER
       name: 'weekday',
-      description: 'Weekday (0=Sunday, 1=Monday, ..., 6=Saturday) (요일)',
+      description: 'Weekday (0=Sunday, 1=Monday, ..., 6=Saturday) (weekly/biweekly/monthly_weekday 필수)',
       required: false,
     },
     {
       type: 4, // INTEGER
       name: 'day_of_month',
-      description: 'Day of month (1-31) (월 중 날짜)',
+      description: 'Day of month (1-31) (monthly_day 필수)',
       required: false,
     },
     {
       type: 4, // INTEGER
       name: 'week_of_month',
-      description: 'Week of month (1-4, or -1 for last week) (월 중 주차)',
+      description: 'Week of month (1-4, or -1 for last week) (monthly_weekday 필수)',
       required: false,
     },
     {
@@ -220,12 +254,6 @@ const SET_MEETING_TIME_COMMAND = {
       type: 3, // STRING
       name: 'repeat_end_date',
       description: 'Repeat end date (YYYY-MM-DD) (반복 종료 날짜)',
-      required: false,
-    },
-    {
-      type: 7, // CHANNEL
-      name: 'channel',
-      description: 'Channel for meeting announcements (기본값: 현재 채널)',
       required: false,
     },
   ],
@@ -242,6 +270,7 @@ const CHANNEL_STATUS_COMMAND = {
 
 const ALL_COMMANDS = [
   SET_MEETING_TIME_COMMAND,
+  SET_RECURRING_MEETING_COMMAND,
   LIST_MEETINGS_COMMAND,
   DELETE_MEETING_COMMAND,
   EDIT_MEETING_COMMAND,

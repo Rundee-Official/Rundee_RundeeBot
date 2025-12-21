@@ -83,6 +83,8 @@ app.post('/interactions',
             return await handleSetupGitHub(data, guildId, channelId, res);
           } else if (name === 'set-meeting-time') {
             return await handleSetMeetingTime(data, guildId, channelId, res);
+          } else if (name === 'set-recurring-meeting') {
+            return await handleSetRecurringMeeting(data, guildId, channelId, res);
           } else if (name === 'set-language') {
             return await handleSetLanguage(data, guildId, res);
           } else if (name === 'channel-status') {
@@ -614,7 +616,7 @@ async function handleChannelStatus(guildId, res) {
  * @returns {Promise<void>}
  */
 /**
- * Handle set-meeting-time command
+ * Handle set-meeting-time command (single meeting only)
  * @param {Object} data - Command data from Discord
  * @param {string} guildId - Guild ID
  * @param {string} channelId - Channel ID where command was executed
@@ -642,14 +644,10 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     const title = getOption('title');
     const dateStr = getOption('date');
     const participantsStr = getOption('participants');
-    const repeatType = getOption('repeat_type') || 'none';
-    const weekday = getOption('weekday');
-    const dayOfMonth = getOption('day_of_month');
-    const weekOfMonth = getOption('week_of_month');
     const reminderMinutesStr = getOption('reminder_minutes') || '15';
-    const repeatEndStr = getOption('repeat_end_date');
-    const channelOption = getOption('channel');
-    const meetingChannelId = channelOption || settings?.meeting_channel_id || channelId;
+    
+    // Use channel from settings (already configured)
+    const meetingChannelId = settings?.meeting_channel_id || channelId;
 
     // Validate required fields
     if (!title) {
@@ -712,75 +710,11 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       reminderMinutesArray.push(15);
     }
 
-    // Parse repeat end date
-    let repeatEndDate = null;
-    if (repeatEndStr) {
-      repeatEndDate = new Date(repeatEndStr);
-      if (isNaN(repeatEndDate.getTime())) {
-        return res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: t('invalidDate', lang),
-          },
-        });
-      }
-    }
-
-    // Validate repeat type options
-    if (repeatType === 'weekly' || repeatType === 'biweekly' || repeatType === 'monthly_weekday') {
-      if (weekday === null || weekday === undefined) {
-        return res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: t('errorOccurred', lang, { message: 'Weekday is required for this repeat type' }),
-          },
-        });
-      }
-    }
-
-    if (repeatType === 'monthly_day') {
-      if (dayOfMonth === null || dayOfMonth === undefined) {
-        return res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: t('errorOccurred', lang, { message: 'Day of month is required for monthly_day repeat type' }),
-          },
-        });
-      }
-    }
-
-    if (repeatType === 'monthly_weekday') {
-      if (weekOfMonth === null || weekOfMonth === undefined) {
-        return res.send({
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-          data: {
-            content: t('errorOccurred', lang, { message: 'Week of month is required for monthly_weekday repeat type' }),
-          },
-        });
-      }
-    }
-
-    // Calculate repeat interval and format repeat_type for database
-    let repeatInterval = null;
-    let dbRepeatType = repeatType;
-    
-    if (repeatType !== 'none') {
-      if (repeatType === 'daily') {
-        repeatInterval = 1;
-      } else if (repeatType === 'weekly') {
-        repeatInterval = 7;
-        dbRepeatType = `weekly:${weekday}`;
-      } else if (repeatType === 'biweekly') {
-        repeatInterval = 14;
-        dbRepeatType = `biweekly:${weekday}`;
-      } else if (repeatType === 'monthly_day') {
-        repeatInterval = 30; // Approximate
-        dbRepeatType = `monthly_day:${dayOfMonth}`;
-      } else if (repeatType === 'monthly_weekday') {
-        repeatInterval = 30; // Approximate
-        dbRepeatType = `monthly_weekday:${weekOfMonth}:${weekday}`;
-      }
-    }
+    // Single meeting - no repeat
+    const repeatType = 'none';
+    const repeatInterval = null;
+    const dbRepeatType = null;
+    const repeatEndDate = null;
 
     // Validate channel access
     const isValid = await validateChannel(meetingChannelId);
@@ -801,7 +735,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       JSON.stringify(participants),
       meetingChannelId,
       JSON.stringify(reminderMinutesArray),
-      dbRepeatType === 'none' ? null : dbRepeatType,
+      dbRepeatType,
       repeatInterval,
       repeatEndDate ? repeatEndDate.toISOString() : null
     );
@@ -825,14 +759,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
         }).join('\n')
       : t('allRemindersPassed', lang);
 
-    let repeatText = '';
-    if (repeatType !== 'none') {
-      const repeatKey = `repeat${repeatType.charAt(0).toUpperCase() + repeatType.slice(1)}`;
-      repeatText = t(repeatKey, lang, { 
-        endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
-      });
-    }
-
+    // Single meeting - no repeat text
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
@@ -841,7 +768,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
           date: formatDateTime(meetingDate),
           participants: formatParticipants(participants),
           reminderTimes: reminderTimesText,
-          repeatText,
+          repeatText: '',
           id: meetingId,
         }),
       },
@@ -916,6 +843,297 @@ async function handleModalSubmit(body, res) {
       flags: InteractionResponseFlags.EPHEMERAL,
     },
   });
+}
+
+/**
+ * Handle set-recurring-meeting command
+ * @param {Object} data - Command data from Discord
+ * @param {string} guildId - Guild ID
+ * @param {string} channelId - Channel ID where command was executed
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
+ */
+async function handleSetRecurringMeeting(data, guildId, channelId, res) {
+  try {
+    const settings = guildSettingsQueries.get.get(guildId);
+    const lang = getGuildLanguage(settings);
+    
+    if (!guildId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('serverOnlyCommand', lang),
+        },
+      });
+    }
+
+    // Extract options
+    const options = data.options || [];
+    const getOption = (name) => options.find(opt => opt.name === name)?.value;
+
+    const title = getOption('title');
+    const timeStr = getOption('time');
+    const participantsStr = getOption('participants');
+    const repeatType = getOption('repeat_type');
+    const weekday = getOption('weekday');
+    const dayOfMonth = getOption('day_of_month');
+    const weekOfMonth = getOption('week_of_month');
+    const reminderMinutesStr = getOption('reminder_minutes') || '15';
+    const repeatEndStr = getOption('repeat_end_date');
+    
+    // Use channel from settings (already configured)
+    const meetingChannelId = settings?.meeting_channel_id || channelId;
+
+    // Validate required fields
+    if (!title) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Title is required' }),
+        },
+      });
+    }
+
+    if (!timeStr) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Time is required' }),
+        },
+      });
+    }
+
+    if (!participantsStr) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Participants are required' }),
+        },
+      });
+    }
+
+    if (!repeatType) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Repeat type is required' }),
+        },
+      });
+    }
+
+    // Parse time
+    const timeMatch = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+    if (!timeMatch) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Invalid time format. Use HH:mm (e.g., 14:30)' }),
+        },
+      });
+    }
+
+    const hours = parseInt(timeMatch[1]);
+    const minutes = parseInt(timeMatch[2]);
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Invalid time. Hours must be 0-23, minutes must be 0-59' }),
+        },
+      });
+    }
+
+    // Validate repeat type options
+    if (repeatType === 'weekly' || repeatType === 'biweekly' || repeatType === 'monthly_weekday') {
+      if (weekday === null || weekday === undefined) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: t('errorOccurred', lang, { message: 'Weekday is required for this repeat type' }),
+          },
+        });
+      }
+    }
+
+    if (repeatType === 'monthly_day') {
+      if (dayOfMonth === null || dayOfMonth === undefined) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: t('errorOccurred', lang, { message: 'Day of month is required for monthly_day repeat type' }),
+          },
+        });
+      }
+    }
+
+    if (repeatType === 'monthly_weekday') {
+      if (weekOfMonth === null || weekOfMonth === undefined) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: t('errorOccurred', lang, { message: 'Week of month is required for monthly_weekday repeat type' }),
+          },
+        });
+      }
+    }
+
+    // Parse participants
+    const participants = parseParticipants(participantsStr);
+    if (participants.length === 0) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'No valid participants found' }),
+        },
+      });
+    }
+
+    // Parse reminder minutes
+    const reminderMinutesArray = reminderMinutesStr
+      .split(',')
+      .map(m => parseInt(m.trim()))
+      .filter(m => !isNaN(m) && m > 0)
+      .sort((a, b) => b - a);
+
+    if (reminderMinutesArray.length === 0) {
+      reminderMinutesArray.push(15);
+    }
+
+    // Parse repeat end date
+    let repeatEndDate = null;
+    if (repeatEndStr) {
+      repeatEndDate = new Date(repeatEndStr);
+      if (isNaN(repeatEndDate.getTime())) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: t('invalidDate', lang),
+          },
+        });
+      }
+    }
+
+    // Calculate first meeting date based on repeat type
+    const now = new Date();
+    let meetingDate;
+
+    if (repeatType === 'daily') {
+      // Next occurrence at the specified time
+      meetingDate = new Date(now);
+      meetingDate.setHours(hours, minutes, 0, 0);
+      if (meetingDate <= now) {
+        meetingDate.setDate(meetingDate.getDate() + 1);
+      }
+    } else if (repeatType === 'weekly' || repeatType === 'biweekly') {
+      // Find next occurrence of the weekday
+      meetingDate = getNextWeekday(now, parseInt(weekday), hours, minutes);
+    } else if (repeatType === 'monthly_day') {
+      // Find next occurrence of the day of month
+      meetingDate = getNextDayOfMonth(now, parseInt(dayOfMonth), hours, minutes);
+    } else if (repeatType === 'monthly_weekday') {
+      // Find next occurrence of nth weekday of month
+      meetingDate = getNextNthWeekday(now, weekOfMonth, parseInt(weekday), hours, minutes);
+    } else {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Invalid repeat type' }),
+        },
+      });
+    }
+
+    // Calculate repeat interval and format repeat_type for database
+    let repeatInterval = null;
+    let dbRepeatType = repeatType;
+    
+    if (repeatType === 'daily') {
+      repeatInterval = 1;
+    } else if (repeatType === 'weekly') {
+      repeatInterval = 7;
+      dbRepeatType = `weekly:${weekday}`;
+    } else if (repeatType === 'biweekly') {
+      repeatInterval = 14;
+      dbRepeatType = `biweekly:${weekday}`;
+    } else if (repeatType === 'monthly_day') {
+      repeatInterval = 30; // Approximate
+      dbRepeatType = `monthly_day:${dayOfMonth}`;
+    } else if (repeatType === 'monthly_weekday') {
+      repeatInterval = 30; // Approximate
+      dbRepeatType = `monthly_weekday:${weekOfMonth}:${weekday}`;
+    }
+
+    // Validate channel access
+    const isValid = await validateChannel(meetingChannelId);
+    if (!isValid) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('invalidChannelError', lang),
+        },
+      });
+    }
+
+    // Insert into database
+    const result = meetingQueries.insert.run(
+      guildId,
+      title,
+      meetingDate.toISOString(),
+      JSON.stringify(participants),
+      meetingChannelId,
+      JSON.stringify(reminderMinutesArray),
+      dbRepeatType,
+      repeatInterval,
+      repeatEndDate ? repeatEndDate.toISOString() : null
+    );
+
+    const meetingId = result.lastInsertRowid;
+
+    // Schedule reminders
+    const reminderTimes = reminderMinutesArray.map(minutes => {
+      const reminderTime = new Date(meetingDate.getTime() - minutes * 60 * 1000);
+      if (reminderTime > new Date()) {
+        scheduleMeetingReminder(meetingId, guildId, title, meetingDate, participants, meetingChannelId, minutes);
+        return { minutes, time: reminderTime };
+      }
+      return null;
+    }).filter(Boolean);
+
+    const reminderTimesText = reminderTimes.length > 0
+      ? reminderTimes.map(rt => {
+          const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
+          return `${formatDateTime(rt.time)} (${minutesText})`;
+        }).join('\n')
+      : t('allRemindersPassed', lang);
+
+    const repeatKey = `repeat${repeatType.charAt(0).toUpperCase() + repeatType.slice(1)}`;
+    const repeatText = t(repeatKey, lang, { 
+      endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
+    });
+
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('meetingScheduled', lang, {
+          title,
+          date: formatDateTime(meetingDate),
+          participants: formatParticipants(participants),
+          reminderTimes: reminderTimesText,
+          repeatText,
+          id: meetingId,
+        }),
+      },
+    });
+  } catch (error) {
+    console.error('Error in handleSetRecurringMeeting:', error);
+    const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+    const lang = getGuildLanguage(settings);
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', lang, { message: error.message }),
+      },
+    });
+  }
 }
 
 // Helper functions for date calculations (kept for potential future use)
