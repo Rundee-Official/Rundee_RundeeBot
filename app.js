@@ -225,7 +225,7 @@ async function handleListMeetings(guildId, res) {
   const meetingList = upcomingMeetings
     .map(m => {
       const participants = JSON.parse(m.participants);
-      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${participants.map(p => `<@${p}>`).join(', ')}`;
+      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${formatParticipants(participants)}`;
     })
     .join('\n\n');
 
@@ -350,7 +350,7 @@ async function handleEditMeeting(data, res) {
       content: t('meetingEdited', lang, {
         title,
         date: formatDateTime(date),
-        participants: participants.map(p => `<@${p}>`).join(', '),
+        participants: formatParticipants(participants),
         id: meetingId,
       }),
     },
@@ -793,9 +793,9 @@ async function handleMessageComponent(body, res) {
                 {
                   type: 4,
                   custom_id: 'meeting_participants',
-                  label: lang === 'ko' ? '참석자 (@멘션 또는 사용자ID)' : 'Participants (@mentions or user IDs)',
+                  label: lang === 'ko' ? '참석자 (@멘션 또는 역할 멘션)' : 'Participants (@user or @role mentions)',
                   style: 1,
-                  placeholder: lang === 'ko' ? '예: @user1 @user2' : 'e.g., @user1 @user2',
+                  placeholder: lang === 'ko' ? '예: @user1 @역할1' : 'e.g., @user1 @role1',
                   required: true,
                 },
               ],
@@ -1130,9 +1130,9 @@ async function handleMessageComponent(body, res) {
               {
                 type: 4,
                 custom_id: 'meeting_participants',
-                label: lang === 'ko' ? '참석자 (@멘션 또는 사용자ID)' : 'Participants (@mentions or user IDs)',
+                label: lang === 'ko' ? '참석자 (@멘션 또는 역할 멘션)' : 'Participants (@user or @role mentions)',
                 style: 1,
-                placeholder: lang === 'ko' ? '예: @user1 @user2' : 'e.g., @user1 @user2',
+                placeholder: lang === 'ko' ? '예: @user1 @역할1' : 'e.g., @user1 @role1',
                 required: true,
               },
             ],
@@ -1494,7 +1494,7 @@ async function handleModalSubmit(body, res) {
       content: t('meetingScheduled', lang, {
         title,
         date: formatDateTime(meetingDate),
-        participants: participants.map(p => `<@${p}>`).join(', '),
+        participants: formatParticipants(participants),
         reminderTimes: reminderTimesText,
         repeatText,
         id: meetingId,
@@ -1720,27 +1720,87 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
 
 /**
  * Parse participants from string (mentions or user IDs)
+ * Supports user mentions (<@user_id> or <@!user_id>) and role mentions (<@&role_id>)
  * @param {string} participantsStr - String containing @mentions or comma-separated user IDs
- * @returns {Array<string>} Array of user IDs
+ * @returns {Array<string>} Array of participant identifiers (format: "u:user_id" for users, "r:role_id" for roles, or just "user_id" for backward compatibility)
  */
 function parseParticipants(participantsStr) {
   const participants = [];
+  const seen = new Set();
   
-  const mentionRegex = /<@!?(\d+)>/g;
+  // Parse user mentions: <@user_id> or <@!user_id>
+  const userMentionRegex = /<@!?(\d+)>/g;
   let match;
-  while ((match = mentionRegex.exec(participantsStr)) !== null) {
-    participants.push(match[1]);
+  while ((match = userMentionRegex.exec(participantsStr)) !== null) {
+    const id = `u:${match[1]}`;
+    if (!seen.has(id)) {
+      participants.push(id);
+      seen.add(id);
+    }
+  }
+  
+  // Parse role mentions: <@&role_id>
+  const roleMentionRegex = /<@&(\d+)>/g;
+  while ((match = roleMentionRegex.exec(participantsStr)) !== null) {
+    const id = `r:${match[1]}`;
+    if (!seen.has(id)) {
+      participants.push(id);
+      seen.add(id);
+    }
   }
 
+  // Parse comma-separated IDs (for backward compatibility, treat as user IDs)
   const parts = participantsStr.split(',');
   for (const part of parts) {
     const trimmed = part.trim();
-    if (/^\d+$/.test(trimmed) && !participants.includes(trimmed)) {
-      participants.push(trimmed);
+    // Only add if it's a plain number and not already in a mention
+    if (/^\d+$/.test(trimmed)) {
+      const id = `u:${trimmed}`;
+      if (!seen.has(id)) {
+        participants.push(id);
+        seen.add(id);
+      }
     }
   }
 
   return participants;
+}
+
+/**
+ * Format participants array for display in messages
+ * Converts participant identifiers to Discord mention format
+ * @param {Array<string>} participants - Array of participant identifiers
+ * @returns {string} Formatted mention string
+ */
+function formatParticipants(participants) {
+  return participants.map(p => {
+    // Handle new format: "u:user_id" or "r:role_id"
+    if (p.startsWith('u:')) {
+      return `<@${p.substring(2)}>`;
+    } else if (p.startsWith('r:')) {
+      return `<@&${p.substring(2)}>`;
+    }
+    // Backward compatibility: plain number is treated as user ID
+    return `<@${p}>`;
+  }).join(', ');
+}
+
+/**
+ * Format participants array for mention in reminder messages (space-separated)
+ * @param {Array<string>} participants - Array of participant identifiers
+ * @returns {string} Formatted mention string with spaces
+ */
+function formatParticipantsMentions(participants) {
+  return participants.map(p => {
+    // Handle new format: "u:user_id" or "r:role_id"
+    if (p.startsWith('u:')) {
+      return `<@${p.substring(2)}>`;
+    } else if (p.startsWith('r:')) {
+      return `<@&${p.substring(2)}>`;
+    }
+    // Backward compatibility: plain number is treated as user ID
+    return `<@${p}>`;
+  }).join(' ');
 }
 
 /**
@@ -1791,7 +1851,7 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
 
       const settings = guildSettingsQueries.get.get(guildId);
       const lang = getGuildLanguage(settings);
-      const mentions = participants.map(p => `<@${p}>`).join(' ');
+      const mentions = formatParticipantsMentions(participants);
       const message = t('meetingReminder', lang, {
         mentions,
         title,
@@ -2178,7 +2238,7 @@ cron.schedule('* * * * *', async () => {
             const settings = guildSettingsQueries.get.get(meeting.guildId);
             const lang = getGuildLanguage(settings);
             const participants = JSON.parse(meeting.participants);
-            const mentions = participants.map(p => `<@${p}>`).join(' ');
+            const mentions = formatParticipantsMentions(participants);
             const message = t('meetingReminder', lang, {
               mentions,
               title: meeting.title,
