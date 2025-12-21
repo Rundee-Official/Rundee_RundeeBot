@@ -1325,64 +1325,7 @@ async function handleModalSubmit(body, res) {
   if (customId.startsWith('meeting_modal_')) {
     const modalId = customId.replace('meeting_modal_', '');
     
-    // Check if participants are encoded in custom_id (new format with Select Menu)
-    // Format: meeting_modal_${participantSelectId}_${participantsEncoded}
-    // Extract participants if encoded
-    const lastUnderscoreIndex = modalId.lastIndexOf('_');
-    if (lastUnderscoreIndex > 0) {
-      const potentialEncoded = modalId.substring(lastUnderscoreIndex + 1);
-      try {
-        const decoded = decodeURIComponent(potentialEncoded);
-        const parsed = JSON.parse(decoded);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].startsWith('u:') || parsed[0].startsWith('r:')) {
-          // This is encoded participants array
-          participants = parsed;
-          // Remove encoded part from modalId for further parsing
-          const modalIdWithoutParticipants = modalId.substring(0, lastUnderscoreIndex);
-          // Continue parsing with the remaining part
-          if (modalIdWithoutParticipants.includes('_')) {
-            // Still has format info, use it
-            const basePart = modalIdWithoutParticipants.split('_')[0];
-            if (basePart === 'none' || basePart === 'biweekly') {
-              repeatType = basePart;
-            } else if (basePart.startsWith('daily')) {
-              if (basePart.startsWith('daily_except')) {
-                repeatType = 'daily_except';
-                const excludeStr = basePart.replace('daily_except', '');
-                weekday = excludeStr ? excludeStr.split(',').map(w => parseInt(w)) : [];
-              } else {
-                repeatType = 'daily';
-                weekday = [];
-              }
-            } else if (basePart.startsWith('weekly')) {
-              repeatType = 'weekly';
-              const parts = modalIdWithoutParticipants.split('_');
-              if (parts.length > 1) weekday = parts[1];
-            } else if (basePart.startsWith('monthly_weekday')) {
-              repeatType = 'monthly_weekday';
-              const parts = modalIdWithoutParticipants.split('_');
-              if (parts.length >= 3) {
-                weekOfMonth = parseInt(parts[parts.length - 2]);
-                weekday = parts[parts.length - 1];
-              }
-            } else if (basePart.startsWith('monthly_day')) {
-              repeatType = 'monthly_day';
-              const parts = modalIdWithoutParticipants.split('_');
-              if (parts.length > 1) dayOfMonth = parts[parts.length - 1];
-            }
-          } else {
-            // Simple format
-            repeatType = modalIdWithoutParticipants || 'none';
-          }
-        }
-      } catch (e) {
-        // Not encoded participants, continue with normal parsing
-      }
-    }
-    
-    // If participants not found in custom_id, continue with normal parsing
-    if (!participants) {
-      if (modalId.startsWith('monthly_weekday_')) {
+    if (modalId.startsWith('monthly_weekday_')) {
       // Format: monthly_weekday_${weekOfMonth}_${weekday}
       const parts = modalId.replace('monthly_weekday_', '').split('_');
       repeatType = 'monthly_weekday';
@@ -1411,7 +1354,6 @@ async function handleModalSubmit(body, res) {
       repeatType = parts[0]; // none, biweekly, weekly
       if (parts.length > 1 && repeatType !== 'daily') {
         weekday = parts[1]; // For weekly/biweekly
-      }
       }
     }
   }
