@@ -167,13 +167,13 @@ const SETUP_GITHUB_COMMAND = {
     {
       type: 3, // STRING
       name: 'repository',
-      description: 'GitHub 저장소 URL (예: https://github.com/user/repo)',
-      required: false,
+      description: 'GitHub 저장소 URL (예: https://github.com/user/repo 또는 user/repo)',
+      required: true,
     },
     {
       type: 7, // CHANNEL
       name: 'channel',
-      description: '알림을 받을 채널',
+      description: '알림을 받을 채널 (기본값: 현재 채널)',
       required: false,
     },
   ],

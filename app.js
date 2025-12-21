@@ -682,24 +682,41 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
   const targetChannelId = channelOption?.value || channelId;
   const repositoryUrl = repositoryOption?.value;
 
-  // Update channel
-  if (targetChannelId) {
-    guildSettingsQueries.setGithubChannel.run(guildId, targetChannelId);
+  // Repository is required
+  if (!repositoryUrl) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', lang, { message: 'Repository URL is required.' }),
+      },
+    });
   }
 
   // Parse and update repository
   let repositoryInfo = null;
-  if (repositoryUrl) {
-    try {
-      const urlPattern = /(?:https?:\/\/)?(?:www\.)?github\.com\/([\w\-\.]+)\/([\w\-\.]+)/i;
-      const match = repositoryUrl.match(urlPattern);
+  try {
+    const urlPattern = /(?:https?:\/\/)?(?:www\.)?github\.com\/([\w\-\.]+)\/([\w\-\.]+)/i;
+    const match = repositoryUrl.match(urlPattern);
+    
+    if (match) {
+      repositoryInfo = {
+        owner: match[1],
+        repo: match[2],
+        full_name: `${match[1]}/${match[2]}`,
+        url: `https://github.com/${match[1]}/${match[2]}`,
+      };
+      guildSettingsQueries.setGithubRepository.run(guildId, repositoryInfo.full_name);
+    } else {
+      // Try format: user/repo
+      const simplePattern = /^([\w\-\.]+)\/([\w\-\.]+)$/i;
+      const simpleMatch = repositoryUrl.match(simplePattern);
       
-      if (match) {
+      if (simpleMatch) {
         repositoryInfo = {
-          owner: match[1],
-          repo: match[2],
-          full_name: `${match[1]}/${match[2]}`,
-          url: `https://github.com/${match[1]}/${match[2]}`,
+          owner: simpleMatch[1],
+          repo: simpleMatch[2],
+          full_name: `${simpleMatch[1]}/${simpleMatch[2]}`,
+          url: `https://github.com/${simpleMatch[1]}/${simpleMatch[2]}`,
         };
         guildSettingsQueries.setGithubRepository.run(guildId, repositoryInfo.full_name);
       } else {
@@ -710,33 +727,32 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
           },
         });
       }
-    } catch (error) {
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: t('errorOccurred', lang, { message: 'Failed to parse GitHub repository URL.' }),
-        },
-      });
     }
+  } catch (error) {
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', lang, { message: 'Failed to parse GitHub repository URL.' }),
+      },
+    });
+  }
+
+  // Update channel (default to current channel if not provided)
+  if (targetChannelId) {
+    guildSettingsQueries.setGithubChannel.run(guildId, targetChannelId);
   }
 
   const webhookUrl = `${process.env.WEBHOOK_BASE_URL || 'https://rundeerundeebot-production.up.railway.app'}/webhook/github`;
   
-  let repoInfo = '';
-  let steps = '';
+  const repoInfo = t('githubRepoRegistered', lang, {
+    repo: repositoryInfo.full_name,
+    url: repositoryInfo.url,
+  });
   
-  if (repositoryInfo) {
-    repoInfo = t('githubRepoRegistered', lang, {
-      repo: repositoryInfo.full_name,
-      url: repositoryInfo.url,
-    });
-    steps = t('githubSteps', lang, {
-      url: repositoryInfo.url,
-      webhookUrl,
-    });
-  } else {
-    steps = t('githubRepoNotSet', lang, { webhookUrl });
-  }
+  const steps = t('githubSteps', lang, {
+    url: repositoryInfo.url,
+    webhookUrl,
+  });
 
   const responseMessage = t('githubSetup', lang, {
     channelId: targetChannelId,
