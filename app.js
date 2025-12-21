@@ -887,6 +887,7 @@ async function handleMessageComponent(body, res) {
   const customId = data.custom_id;
 
   // No GUI components for meeting scheduling - all handled via command arguments
+  // Return error for any component interactions (no GUI components should be triggered)
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
@@ -895,8 +896,29 @@ async function handleMessageComponent(body, res) {
     },
   });
 }
-    
-    if (repeatType === 'daily') {
+
+/**
+ * Handle modal submit interactions
+ * @param {Object} body - Discord interaction body
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
+ */
+async function handleModalSubmit(body, res) {
+  // No modal submissions for meeting scheduling - all handled via command arguments
+  const { guild_id: guildId } = body;
+  const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+  const lang = getGuildLanguage(settings);
+  
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: t('errorOccurred', lang, { message: 'Unknown modal submission' }),
+      flags: InteractionResponseFlags.EPHEMERAL,
+    },
+  });
+}
+
+/**
       // For daily, show option to exclude weekdays
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -1442,15 +1464,6 @@ async function handleMessageComponent(body, res) {
       },
     });
   }
-
-
-  return res.send({
-    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: {
-      content: 'Unknown component interaction',
-      flags: InteractionResponseFlags.EPHEMERAL,
-    },
-  });
 }
 
 /**
@@ -1460,51 +1473,30 @@ async function handleMessageComponent(body, res) {
  * @returns {Promise<void>}
  */
 async function handleModalSubmit(body, res) {
-  const { data, guild_id: guildId, channel, member } = body;
-  const channelId = channel?.id;
-  const userId = member?.user?.id;
-  
+  // No modal submissions for meeting scheduling - all handled via command arguments
+  const { guild_id: guildId } = body;
   const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
   const lang = getGuildLanguage(settings);
+  
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: t('errorOccurred', lang, { message: 'Unknown modal submission' }),
+      flags: InteractionResponseFlags.EPHEMERAL,
+    },
+  });
+}
 
-  if (!guildId) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: t('serverOnlyCommand', lang),
-        flags: InteractionResponseFlags.EPHEMERAL,
-      },
-    });
-  }
-
-  const customId = data.custom_id;
-  const components = data.components || [];
-
-  // Extract values from modal components
-  const getComponentValue = (customId) => {
-    for (const row of components) {
-      const component = row.components?.[0];
-      if (component?.custom_id === customId) {
-        return component.value;
-      }
-    }
-    return null;
-  };
-
-  const title = getComponentValue('meeting_title');
-  const dateStr = getComponentValue('meeting_date');
-  const timeStr = getComponentValue('meeting_time');
-  let participantsStr = getComponentValue('meeting_participants'); // May be null if participants were selected via Select Menu
-  const reminderMinutesStr = getComponentValue('reminder_minutes') || '15';
-  const repeatEndStr = getComponentValue('repeat_end_date');
-
-  // Parse modal custom_id to get repeat type and parameters
-  let repeatType = 'none';
-  let weekday = null;
-  let dayOfMonth = null;
-  let weekOfMonth = null;
-
-  if (customId.startsWith('meeting_modal_')) {
+// Helper functions for date calculations (kept for potential future use)
+/**
+ * Get next occurrence of a weekday from a given date
+ * @param {Date} fromDate - Starting date
+ * @param {number} weekday - Weekday (0=Sunday, 6=Saturday)
+ * @param {number} hours - Hours (0-23)
+ * @param {number} minutes - Minutes (0-59)
+ * @returns {Date} Next occurrence date
+ */
+function getNextWeekday(fromDate, weekday, hours, minutes) {
     const modalId = customId.replace('meeting_modal_', '');
     
     if (modalId.startsWith('monthly_weekday_')) {
