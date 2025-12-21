@@ -1,5 +1,18 @@
+/**
+ * @fileoverview Utility functions for Discord API requests
+ * @copyright Rundee 2024
+ * @license MIT
+ */
+
 import 'dotenv/config';
 
+/**
+ * Make a request to Discord API
+ * @param {string} endpoint - API endpoint (relative to base URL)
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Response>} Fetch response
+ * @throws {Error} Throws error if request fails
+ */
 export async function DiscordRequest(endpoint, options) {
   // append endpoint to root API URL
   const url = 'https://discord.com/api/v10/' + endpoint;
@@ -24,6 +37,12 @@ export async function DiscordRequest(endpoint, options) {
   return res;
 }
 
+/**
+ * Install/update global commands for the Discord application
+ * @param {string} appId - Discord application ID
+ * @param {Array<Object>} commands - Array of command definitions
+ * @returns {Promise<void>}
+ */
 export async function InstallGlobalCommands(appId, commands) {
   // API endpoint to overwrite global commands
   const endpoint = `applications/${appId}/commands`;
@@ -37,12 +56,20 @@ export async function InstallGlobalCommands(appId, commands) {
   }
 }
 
-// Simple method that returns a random emoji from list
+/**
+ * Get a random emoji from predefined list
+ * @returns {string} Random emoji
+ */
 export function getRandomEmoji() {
   const emojiList = ['😭','😄','😌','🤓','😎','😤','🤖','😶‍🌫️','🌏','📸','💿','👋','🌊','✨'];
   return emojiList[Math.floor(Math.random() * emojiList.length)];
 }
 
+/**
+ * Capitalize first letter of a string
+ * @param {string} str - String to capitalize
+ * @returns {string} Capitalized string
+ */
 export function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }

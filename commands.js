@@ -1,59 +1,11 @@
+/**
+ * @fileoverview Discord slash command definitions for Rundee Bot
+ * @copyright Rundee 2024
+ * @license MIT
+ */
+
 import 'dotenv/config';
 import { InstallGlobalCommands } from './utils.js';
-
-// Meeting schedule command
-const SCHEDULE_MEETING_COMMAND = {
-  name: 'schedule-meeting',
-  description: '회의 일정을 등록합니다 (Register a meeting schedule)',
-  type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 1, 2],
-  options: [
-    {
-      type: 3, // STRING
-      name: 'date',
-      description: '회의 날짜 및 시간 (예: 2024-12-25 14:30)',
-      required: true,
-    },
-    {
-      type: 3, // STRING
-      name: 'title',
-      description: '회의 제목',
-      required: true,
-    },
-    {
-      type: 3, // STRING
-      name: 'participants',
-      description: '참석자 멘션 (예: @user1 @user2 또는 user1,user2)',
-      required: true,
-    },
-    {
-      type: 3, // STRING
-      name: 'reminder_minutes',
-      description: '몇 분 전에 알림을 보낼지 (여러 시간 가능: 예: 1,5,10 또는 15, 기본값: 15)',
-      required: false,
-    },
-    {
-      type: 3, // STRING
-      name: 'repeat',
-      description: '반복 설정 (none, daily, weekly, biweekly, monthly)',
-      required: false,
-      choices: [
-        { name: '반복 없음', value: 'none' },
-        { name: '매일', value: 'daily' },
-        { name: '매주', value: 'weekly' },
-        { name: '격주', value: 'biweekly' },
-        { name: '매월', value: 'monthly' },
-      ],
-    },
-    {
-      type: 3, // STRING
-      name: 'repeat_end',
-      description: '반복 종료 날짜 (예: 2025-12-31, 선택사항)',
-      required: false,
-    },
-  ],
-};
 
 // List meetings command
 const LIST_MEETINGS_COMMAND = {
@@ -200,27 +152,10 @@ const SET_LANGUAGE_COMMAND = {
   ],
 };
 
-// Test meeting command (for testing purposes)
-const TEST_MEETING_COMMAND = {
-  name: 'test-meeting',
-  description: 'Create a test meeting 1 minute from now (for testing)',
-  type: 1,
-  integration_types: [0, 1],
-  contexts: [0, 1, 2],
-  options: [
-    {
-      type: 3, // STRING
-      name: 'participants',
-      description: 'Participants to mention',
-      required: false,
-    },
-  ],
-};
-
-// Set meeting time command (interactive GUI)
+// Schedule meeting command (interactive GUI)
 const SET_MEETING_TIME_COMMAND = {
   name: 'set-meeting-time',
-  description: 'Schedule a meeting with interactive setup (GUI)',
+  description: 'Schedule a meeting with interactive setup (회의 일정을 등록합니다)',
   type: 1,
   integration_types: [0, 1],
   contexts: [0, 1, 2],
@@ -236,7 +171,7 @@ const CHANNEL_STATUS_COMMAND = {
 };
 
 const ALL_COMMANDS = [
-  SCHEDULE_MEETING_COMMAND,
+  SET_MEETING_TIME_COMMAND,
   LIST_MEETINGS_COMMAND,
   DELETE_MEETING_COMMAND,
   EDIT_MEETING_COMMAND,
@@ -244,8 +179,6 @@ const ALL_COMMANDS = [
   SET_GITHUB_CHANNEL_COMMAND,
   SETUP_GITHUB_COMMAND,
   SET_LANGUAGE_COMMAND,
-  TEST_MEETING_COMMAND,
-  SET_MEETING_TIME_COMMAND,
   CHANNEL_STATUS_COMMAND,
 ];
 

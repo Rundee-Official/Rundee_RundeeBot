@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Rundee Bot - Discord bot for meeting reminders and GitHub integration
+ * @copyright Rundee 2024
+ * @license MIT
+ */
+
 import 'dotenv/config';
 import express from 'express';
 import cron from 'node-cron';
@@ -63,9 +69,7 @@ app.post('/interactions',
         const { name } = data;
 
         try {
-          if (name === 'schedule-meeting') {
-            return await handleScheduleMeeting(data, guildId, channelId, res);
-          } else if (name === 'list-meetings') {
+          if (name === 'list-meetings') {
             return await handleListMeetings(guildId, res);
           } else if (name === 'delete-meeting') {
             return await handleDeleteMeeting(data, res);
@@ -77,8 +81,6 @@ app.post('/interactions',
             return await handleSetGithubChannel(data, guildId, channelId, res);
           } else if (name === 'setup-github') {
             return await handleSetupGitHub(data, guildId, channelId, res);
-          } else if (name === 'test-meeting') {
-            return await handleTestMeeting(data, guildId, channelId, res);
           } else if (name === 'set-meeting-time') {
             return await handleSetMeetingTime(data, guildId, channelId, res);
           } else if (name === 'set-language') {
@@ -190,152 +192,10 @@ app.post('/webhook/github', async (req, res) => {
 });
 
 /**
- * Handle schedule-meeting command
- */
-async function handleScheduleMeeting(data, guildId, channelId, res) {
-  const settings = guildSettingsQueries.get.get(guildId);
-  const lang = getGuildLanguage(settings);
-  
-  if (!guildId) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: t('serverOnlyCommand', lang),
-      },
-    });
-  }
-
-  const dateStr = data.options?.find(opt => opt.name === 'date')?.value;
-  const title = data.options?.find(opt => opt.name === 'title')?.value;
-  const participantsStr = data.options?.find(opt => opt.name === 'participants')?.value;
-  const reminderMinutesStr = data.options?.find(opt => opt.name === 'reminder_minutes')?.value || '15';
-  const repeatType = data.options?.find(opt => opt.name === 'repeat')?.value || 'none';
-  const repeatEndStr = data.options?.find(opt => opt.name === 'repeat_end')?.value;
-
-  // Parse reminder minutes
-  const reminderMinutesArray = reminderMinutesStr
-    .split(',')
-    .map(m => parseInt(m.trim()))
-    .filter(m => !isNaN(m) && m > 0)
-    .sort((a, b) => b - a);
-
-  if (reminderMinutesArray.length === 0) {
-    reminderMinutesArray.push(15);
-  }
-
-  // Parse date - assume KST (Asia/Seoul) timezone
-  // Convert "YYYY-MM-DD HH:mm" to ISO string with KST timezone
-  const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
-  let meetingDate;
-  if (dateMatch) {
-    // Parse as KST (UTC+9)
-    const [, year, month, day, hour, minute] = dateMatch;
-    meetingDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:00+09:00`);
-  } else {
-    meetingDate = new Date(dateStr);
-  }
-  
-  if (isNaN(meetingDate.getTime())) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: t('invalidDate', lang),
-      },
-    });
-  }
-
-  if (meetingDate < new Date()) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: t('pastDate', lang),
-      },
-    });
-  }
-
-  // Parse participants
-  const participants = parseParticipants(participantsStr);
-
-  // Get meeting channel from settings or use current channel
-  const meetingChannelId = settings?.meeting_channel_id || channelId;
-
-  // Parse repeat end date if provided
-  let repeatEndDate = null;
-  if (repeatEndStr && repeatType !== 'none') {
-    repeatEndDate = new Date(repeatEndStr);
-    if (isNaN(repeatEndDate.getTime())) {
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: t('invalidDate', lang),
-        },
-      });
-    }
-  }
-
-  // Calculate repeat interval
-  let repeatInterval = null;
-  if (repeatType !== 'none') {
-    repeatInterval = getRepeatInterval(repeatType);
-  }
-
-  // Insert into database
-  const result = meetingQueries.insert.run(
-    guildId,
-    title,
-    meetingDate.toISOString(),
-    JSON.stringify(participants),
-    meetingChannelId,
-    JSON.stringify(reminderMinutesArray),
-    repeatType === 'none' ? null : repeatType,
-    repeatInterval,
-    repeatEndDate ? repeatEndDate.toISOString() : null
-  );
-
-  const meetingId = result.lastInsertRowid;
-
-  // Schedule reminders
-  const reminderTimes = reminderMinutesArray.map(minutes => {
-    const reminderTime = new Date(meetingDate.getTime() - minutes * 60 * 1000);
-    if (reminderTime > new Date()) {
-      scheduleMeetingReminder(meetingId, guildId, title, meetingDate, participants, meetingChannelId, minutes);
-      return { minutes, time: reminderTime };
-    }
-    return null;
-  }).filter(Boolean);
-
-  const reminderTimesText = reminderTimes.length > 0
-    ? reminderTimes.map(rt => {
-        const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
-        return `${formatDateTime(rt.time)} (${minutesText})`;
-      }).join('\n')
-    : t('allRemindersPassed', lang);
-
-  let repeatText = '';
-  if (repeatType !== 'none') {
-    const repeatKey = `repeat${repeatType.charAt(0).toUpperCase() + repeatType.slice(1)}`;
-    repeatText = t(repeatKey, lang, { 
-      endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
-    });
-  }
-
-  return res.send({
-    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: {
-      content: t('meetingScheduled', lang, {
-        title,
-        date: formatDateTime(meetingDate),
-        participants: participants.map(p => `<@${p}>`).join(', '),
-        reminderTimes: reminderTimesText,
-        repeatText,
-        id: meetingId,
-      }),
-    },
-  });
-}
-
-/**
  * Handle list-meetings command
+ * @param {string} guildId - Guild ID
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleListMeetings(guildId, res) {
   const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
@@ -379,6 +239,9 @@ async function handleListMeetings(guildId, res) {
 
 /**
  * Handle delete-meeting command
+ * @param {Object} data - Command data from Discord
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleDeleteMeeting(data, res) {
   const meetingId = parseInt(data.options?.find(opt => opt.name === 'meeting_id')?.value);
@@ -413,6 +276,9 @@ async function handleDeleteMeeting(data, res) {
 
 /**
  * Handle edit-meeting command
+ * @param {Object} data - Command data from Discord
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleEditMeeting(data, res) {
   const meetingId = parseInt(data.options?.find(opt => opt.name === 'meeting_id')?.value);
@@ -493,6 +359,11 @@ async function handleEditMeeting(data, res) {
 
 /**
  * Handle set-meeting-channel command
+ * @param {Object} data - Command data from Discord
+ * @param {string} guildId - Guild ID
+ * @param {string} channelId - Channel ID where command was executed
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleSetMeetingChannel(data, guildId, channelId, res) {
   try {
@@ -617,6 +488,10 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
 
 /**
  * Handle set-language command
+ * @param {Object} data - Command data from Discord
+ * @param {string} guildId - Guild ID
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleSetLanguage(data, guildId, res) {
   try {
@@ -676,6 +551,12 @@ async function handleSetLanguage(data, guildId, res) {
 /**
  * Handle channel-status command
  */
+/**
+ * Handle channel-status command
+ * @param {string} guildId - Guild ID
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
+ */
 async function handleChannelStatus(guildId, res) {
   const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
   const lang = getGuildLanguage(settings);
@@ -713,82 +594,24 @@ async function handleChannelStatus(guildId, res) {
 
   const githubRepoStatus = githubRepo || t('channelNotSet', lang);
 
+  const content = `${t('channelStatusTitle', lang)}\n\n${t('channelStatusMeeting', lang, { channel: meetingChannelStatus })}\n${t('channelStatusGithub', lang, { channel: githubChannelStatus })}\n${t('channelStatusRepo', lang, { repo: githubRepoStatus })}`;
+
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
-      content: t('channelStatus', lang, {
-        meetingChannel: meetingChannelStatus,
-        githubChannel: githubChannelStatus,
-        githubRepo: githubRepoStatus,
-      }),
+      content,
     },
   });
 }
 
 /**
- * Handle test-meeting command (creates a meeting 1 minute from now for testing)
- */
-async function handleTestMeeting(data, guildId, channelId, res) {
-  const settings = guildSettingsQueries.get.get(guildId);
-  const lang = getGuildLanguage(settings);
-  
-  if (!guildId) {
-    return res.send({
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: t('serverOnlyCommand', lang),
-      },
-    });
-  }
-
-  // Create a meeting 1 minute from now
-  const now = new Date();
-  const testDate = new Date(now.getTime() + 60 * 1000); // 1 minute from now
-  
-  const participantsStr = data.options?.find(opt => opt.name === 'participants')?.value || '<@' + (data.member?.user?.id || '') + '>';
-  const participants = parseParticipants(participantsStr);
-  
-  // Get meeting channel from settings or use current channel
-  const meetingChannelId = settings?.meeting_channel_id || channelId;
-  
-  const title = 'Test Meeting';
-  const reminderMinutesArray = [1]; // 1 minute reminder (which should trigger almost immediately)
-  
-  // Insert into database
-  const result = meetingQueries.insert.run(
-    guildId,
-    title,
-    testDate.toISOString(),
-    JSON.stringify(participants),
-    meetingChannelId,
-    JSON.stringify(reminderMinutesArray),
-    null, // no repeat
-    null,
-    null
-  );
-
-  const meetingId = result.lastInsertRowid;
-
-  // Schedule reminder
-  scheduleMeetingReminder(meetingId, guildId, title, testDate, participants, meetingChannelId, 1);
-
-  return res.send({
-    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: {
-      content: t('meetingScheduled', lang, {
-        title,
-        date: formatDateTime(testDate),
-        participants: participants.map(p => `<@${p}>`).join(', '),
-        reminderTimes: `${formatDateTime(new Date(testDate.getTime() - 60 * 1000))} (1 min before)`,
-        repeatText: '',
-        id: meetingId,
-      }) + '\n\n**Note: This is a test meeting. Reminder should arrive in about 1 minute.**',
-    },
-  });
-}
-
-/**
- * Handle set-meeting-time command (interactive GUI)
+ * Handle set-meeting-time command (interactive GUI for scheduling meetings)
+ * This is the main command for scheduling meetings with support for all repeat types
+ * @param {Object} data - Command data from Discord
+ * @param {string} guildId - Guild ID
+ * @param {string} channelId - Channel ID where command was executed
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleSetMeetingTime(data, guildId, channelId, res) {
   const settings = guildSettingsQueries.get.get(guildId);
@@ -861,6 +684,9 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
 
 /**
  * Handle message component interactions (buttons, select menus)
+ * @param {Object} body - Discord interaction body
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleMessageComponent(body, res) {
   const { data, guild_id: guildId, channel, member } = body;
@@ -1429,6 +1255,9 @@ async function handleMessageComponent(body, res) {
 
 /**
  * Handle modal submit interactions
+ * @param {Object} body - Discord interaction body
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleModalSubmit(body, res) {
   const { data, guild_id: guildId, channel, member } = body;
@@ -1676,7 +1505,12 @@ async function handleModalSubmit(body, res) {
 }
 
 /**
- * Helper function to get next occurrence of a weekday
+ * Get next occurrence of a weekday from a given date
+ * @param {Date} fromDate - Starting date
+ * @param {number} weekday - Weekday (0=Sunday, 6=Saturday)
+ * @param {number} hours - Hours (0-23)
+ * @param {number} minutes - Minutes (0-59)
+ * @returns {Date} Next occurrence date
  */
 function getNextWeekday(fromDate, weekday, hours, minutes) {
   const date = new Date(fromDate);
@@ -1695,7 +1529,12 @@ function getNextWeekday(fromDate, weekday, hours, minutes) {
 }
 
 /**
- * Helper function to get next occurrence of a day of month
+ * Get next occurrence of a day of month from a given date
+ * @param {Date} fromDate - Starting date
+ * @param {number} dayOfMonth - Day of month (1-31)
+ * @param {number} hours - Hours (0-23)
+ * @param {number} minutes - Minutes (0-59)
+ * @returns {Date} Next occurrence date
  */
 function getNextDayOfMonth(fromDate, dayOfMonth, hours, minutes) {
   const date = new Date(fromDate);
@@ -1712,7 +1551,12 @@ function getNextDayOfMonth(fromDate, dayOfMonth, hours, minutes) {
 }
 
 /**
- * Helper function to get next occurrence of nth weekday of month
+ * Get the date of nth weekday of a month
+ * @param {number} year - Year
+ * @param {number} month - Month (0-based)
+ * @param {number} weekOfMonth - Week of month (1-4, or -1 for last week)
+ * @param {number} weekday - Weekday (0=Sunday, 6=Saturday)
+ * @returns {Date} Date object
  */
 function getNthWeekday(year, month, weekOfMonth, weekday) {
   const firstDay = new Date(year, month, 1);
@@ -1737,6 +1581,15 @@ function getNthWeekday(year, month, weekOfMonth, weekday) {
   return new Date(year, month, date);
 }
 
+/**
+ * Get next occurrence of nth weekday of month from a given date
+ * @param {Date} fromDate - Starting date
+ * @param {number} weekOfMonth - Week of month (1-4, or -1 for last week)
+ * @param {number} weekday - Weekday (0=Sunday, 6=Saturday)
+ * @param {number} hours - Hours (0-23)
+ * @param {number} minutes - Minutes (0-59)
+ * @returns {Date} Next occurrence date
+ */
 function getNextNthWeekday(fromDate, weekOfMonth, weekday, hours, minutes) {
   let date = getNthWeekday(fromDate.getFullYear(), fromDate.getMonth(), weekOfMonth, weekday);
   date.setHours(hours, minutes, 0, 0);
@@ -1753,6 +1606,11 @@ function getNextNthWeekday(fromDate, weekOfMonth, weekday, hours, minutes) {
 
 /**
  * Handle setup-github command
+ * @param {Object} data - Command data from Discord
+ * @param {string} guildId - Guild ID
+ * @param {string} channelId - Channel ID where command was executed
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
  */
 async function handleSetupGitHub(data, guildId, channelId, res) {
   const settings = guildSettingsQueries.get.get(guildId);
@@ -1861,7 +1719,9 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
 }
 
 /**
- * Parse participants from string
+ * Parse participants from string (mentions or user IDs)
+ * @param {string} participantsStr - String containing @mentions or comma-separated user IDs
+ * @returns {Array<string>} Array of user IDs
  */
 function parseParticipants(participantsStr) {
   const participants = [];
@@ -1884,7 +1744,9 @@ function parseParticipants(participantsStr) {
 }
 
 /**
- * Get repeat interval in days
+ * Get repeat interval in days for a repeat type
+ * @param {string} repeatType - Repeat type (daily, weekly, biweekly, monthly)
+ * @returns {number|null} Interval in days or null
  */
 function getRepeatInterval(repeatType) {
   const intervals = {
@@ -1897,7 +1759,14 @@ function getRepeatInterval(repeatType) {
 }
 
 /**
- * Schedule a meeting reminder
+ * Schedule a meeting reminder using cron
+ * @param {number} meetingId - Meeting ID
+ * @param {string} guildId - Guild ID
+ * @param {string} title - Meeting title
+ * @param {Date} date - Meeting date
+ * @param {Array<string>} participants - Array of user IDs
+ * @param {string} channelId - Channel ID to send reminder
+ * @param {number} reminderMinutes - Minutes before meeting to send reminder
  */
 function scheduleMeetingReminder(meetingId, guildId, title, date, participants, channelId, reminderMinutes) {
   const reminderTime = new Date(date.getTime() - reminderMinutes * 60 * 1000);
@@ -1920,8 +1789,15 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
       const reminded = JSON.parse(meeting.reminded || '[]');
       if (reminded.includes(reminderMinutes)) return;
 
+      const settings = guildSettingsQueries.get.get(guildId);
+      const lang = getGuildLanguage(settings);
       const mentions = participants.map(p => `<@${p}>`).join(' ');
-      const message = `**Meeting Reminder**\n\n${mentions}\n\n**${title}**\n**Date:** ${formatDateTime(date)}\n\nMeeting starts in ${reminderMinutes} minute(s)!`;
+      const message = t('meetingReminder', lang, {
+        mentions,
+        title,
+        date: formatDateTime(date),
+        minutes: reminderMinutes,
+      });
 
       await sendMessage(channelId, message);
       
@@ -1937,7 +1813,8 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
 }
 
 /**
- * Handle recurring meeting - create next occurrence
+ * Handle recurring meeting - create next occurrence after current meeting date
+ * @param {Object} meetingRow - Database row for the meeting
  */
 async function handleRecurringMeeting(meetingRow) {
   const dbMeeting = dbToMeeting(meetingRow);
@@ -2056,6 +1933,8 @@ async function handleRecurringMeeting(meetingRow) {
 
 /**
  * Convert database row to meeting object
+ * @param {Object} row - Database row
+ * @returns {Object} Meeting object
  */
 function dbToMeeting(row) {
   return {
@@ -2074,7 +1953,9 @@ function dbToMeeting(row) {
 }
 
 /**
- * Validate if bot can access a channel
+ * Validate if bot can access a Discord channel
+ * @param {string} channelId - Channel ID
+ * @returns {Promise<boolean>} True if channel is accessible
  */
 async function validateChannel(channelId) {
   try {
@@ -2090,6 +1971,10 @@ async function validateChannel(channelId) {
 
 /**
  * Send a message to a Discord channel
+ * @param {string} channelId - Channel ID
+ * @param {string} content - Message content
+ * @returns {Promise<Response>} Discord API response
+ * @throws {Error} Throws CHANNEL_INVALID error if channel is inaccessible
  */
 async function sendMessage(channelId, content) {
   try {
@@ -2110,7 +1995,9 @@ async function sendMessage(channelId, content) {
 }
 
 /**
- * Handle GitHub push event
+ * Handle GitHub push event and send notifications to configured guilds
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
  */
 async function handleGitHubPush(payload, guilds) {
   const repository = payload.repository;
@@ -2123,9 +2010,21 @@ async function handleGitHubPush(payload, guilds) {
     if (!guild.github_channel_id) continue;
 
     try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
       const commitMessages = commits.slice(0, 5).map(c => `  • ${c.message.split('\n')[0]} (${c.author.name})`).join('\n');
       const moreCommits = commits.length > 5 ? `\n  ... and ${commits.length - 5} more commits` : '';
-      const message = `**GitHub Push Event**\n\n**Repository:** ${repository.full_name}\n**Branch:** ${branch}\n**Author:** ${pusher.name}\n**Commits:** ${commits.length}\n\n**Commit History:**\n${commitMessages}${moreCommits}\n\n[View](${payload.compare})`;
+      
+      const message = t('githubPush', lang, {
+        repo: repository.full_name,
+        branch: branch,
+        author: pusher.name,
+        commitsCount: commits.length,
+        commitMessages: commitMessages,
+        moreCommits: moreCommits,
+        compareUrl: payload.compare,
+      });
 
       await sendMessage(guild.github_channel_id, message);
     } catch (error) {
@@ -2135,7 +2034,9 @@ async function handleGitHubPush(payload, guilds) {
 }
 
 /**
- * Handle GitHub pull request event
+ * Handle GitHub pull request event and send notifications to configured guilds
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
  */
 async function handleGitHubPullRequest(payload, guilds) {
   const repository = payload.repository;
@@ -2146,14 +2047,37 @@ async function handleGitHubPullRequest(payload, guilds) {
     if (!guild.github_channel_id) continue;
 
     try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
       let message = '';
       if (action === 'opened') {
-        message = `**GitHub Pull Request Opened**\n\n**Repository:** ${repository.full_name}\n**PR Title:** ${pullRequest.title}\n**Author:** ${pullRequest.user.login}\n**Base:** ${pullRequest.base.ref} <- **Head:** ${pullRequest.head.ref}\n\n[View PR](${pullRequest.html_url})`;
+        message = t('githubPROpened', lang, {
+          repo: repository.full_name,
+          prTitle: pullRequest.title,
+          author: pullRequest.user.login,
+          baseRef: pullRequest.base.ref,
+          headRef: pullRequest.head.ref,
+          prUrl: pullRequest.html_url,
+        });
       } else if (action === 'closed' && pullRequest.merged) {
         const merger = pullRequest.merged_by;
-        message = `**GitHub Pull Request Merged**\n\n**Repository:** ${repository.full_name}\n**PR Title:** ${pullRequest.title}\n**Author:** ${pullRequest.user.login}\n**Merged by:** ${merger.login}\n**Base Branch:** ${pullRequest.base.ref}\n**Merge Branch:** ${pullRequest.head.ref}\n\n[View PR](${pullRequest.html_url})`;
+        message = t('githubPRMerged', lang, {
+          repo: repository.full_name,
+          prTitle: pullRequest.title,
+          author: pullRequest.user.login,
+          merger: merger.login,
+          baseRef: pullRequest.base.ref,
+          headRef: pullRequest.head.ref,
+          prUrl: pullRequest.html_url,
+        });
       } else if (action === 'closed') {
-        message = `**GitHub Pull Request Closed**\n\n**Repository:** ${repository.full_name}\n**PR Title:** ${pullRequest.title}\n**Author:** ${pullRequest.user.login}\n\n[View PR](${pullRequest.html_url})`;
+        message = t('githubPRClosed', lang, {
+          repo: repository.full_name,
+          prTitle: pullRequest.title,
+          author: pullRequest.user.login,
+          prUrl: pullRequest.html_url,
+        });
       }
 
       if (message) {
@@ -2166,7 +2090,9 @@ async function handleGitHubPullRequest(payload, guilds) {
 }
 
 /**
- * Handle GitHub issue event
+ * Handle GitHub issue event and send notifications to configured guilds
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
  */
 async function handleGitHubIssue(payload, guilds) {
   const repository = payload.repository;
@@ -2177,11 +2103,28 @@ async function handleGitHubIssue(payload, guilds) {
     if (!guild.github_channel_id) continue;
 
     try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
       let message = '';
       if (action === 'opened') {
-        message = `**GitHub Issue Opened**\n\n**Repository:** ${repository.full_name}\n**Title:** ${issue.title}\n**Author:** ${issue.user.login}\n**Labels:** ${issue.labels.map(l => l.name).join(', ') || 'None'}\n\n${issue.body ? issue.body.substring(0, 200) + (issue.body.length > 200 ? '...' : '') : ''}\n\n[View Issue](${issue.html_url})`;
+        const issueBody = issue.body ? issue.body.substring(0, 200) + (issue.body.length > 200 ? '...' : '') : '';
+        message = t('githubIssueOpened', lang, {
+          repo: repository.full_name,
+          issueTitle: issue.title,
+          author: issue.user.login,
+          labels: issue.labels.map(l => l.name).join(', ') || 'None',
+          issueBody: issueBody,
+          issueUrl: issue.html_url,
+        });
       } else if (action === 'closed') {
-        message = `**GitHub Issue Closed**\n\n**Repository:** ${repository.full_name}\n**Title:** ${issue.title}\n**Author:** ${issue.user.login}\n**Closed by:** ${issue.closed_by?.login || 'Unknown'}\n\n[View Issue](${issue.html_url})`;
+        message = t('githubIssueClosed', lang, {
+          repo: repository.full_name,
+          issueTitle: issue.title,
+          author: issue.user.login,
+          closer: issue.closed_by?.login || 'Unknown',
+          issueUrl: issue.html_url,
+        });
       }
 
       if (message) {
@@ -2194,7 +2137,9 @@ async function handleGitHubIssue(payload, guilds) {
 }
 
 /**
- * Format date and time for display
+ * Format date and time for display (YYYY-MM-DD HH:mm)
+ * @param {Date|string} date - Date object or ISO string
+ * @returns {string} Formatted date string
  */
 function formatDateTime(date) {
   if (typeof date === 'string') date = new Date(date);

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Database operations for Rundee Bot using SQLite
+ * @copyright Rundee 2024
+ * @license MIT
+ */
+
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
