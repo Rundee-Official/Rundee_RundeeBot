@@ -81,6 +81,8 @@ app.post('/interactions',
             return await handleTestMeeting(data, guildId, channelId, res);
           } else if (name === 'set-meeting-time') {
             return await handleSetMeetingTime(data, guildId, channelId, res);
+          } else if (name === 'set-language') {
+            return await handleSetLanguage(data, guildId, res);
           }
 
           console.error(`unknown command: ${name}`);
