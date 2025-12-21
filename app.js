@@ -1255,6 +1255,93 @@ async function handleMessageComponent(body, res) {
     });
   }
 
+  // Handle daily exclude weekdays selection
+  if (customId === 'daily_exclude_weekdays') {
+    const excludedWeekdays = data.values || [];
+    // Remove 'none' if other days are selected
+    const filtered = excludedWeekdays.filter(v => v !== 'none' || excludedWeekdays.length === 1);
+    const excludeStr = filtered.length === 1 && filtered[0] === 'none' ? '' : filtered.sort().join(',');
+    
+    // Show modal for meeting details
+    return res.send({
+      type: InteractionResponseType.MODAL,
+      data: {
+        custom_id: `meeting_modal_daily${excludeStr ? '_except_' + excludeStr : ''}`,
+        title: lang === 'ko' ? '회의 일정 등록' : 'Schedule Meeting',
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_title',
+                label: lang === 'ko' ? '회의 제목' : 'Meeting Title',
+                style: 1,
+                min_length: 1,
+                max_length: 100,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_date',
+                label: lang === 'ko' ? '시작 날짜 및 시간 (YYYY-MM-DD HH:mm)' : 'Start Date & Time (YYYY-MM-DD HH:mm)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 2024-12-25 14:30' : 'e.g., 2024-12-25 14:30',
+                min_length: 16,
+                max_length: 16,
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'meeting_participants',
+                label: lang === 'ko' ? '참석자 (@멘션 또는 사용자ID)' : 'Participants (@mentions or user IDs)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: @user1 @user2' : 'e.g., @user1 @user2',
+                required: true,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'reminder_minutes',
+                label: lang === 'ko' ? '알림 시간(분 전, 쉼표로 구분)' : 'Reminder Minutes (comma-separated)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 1,5,10 (기본값: 15)' : 'e.g., 1,5,10 (default: 15)',
+                required: false,
+              },
+            ],
+          },
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: 'repeat_end_date',
+                label: lang === 'ko' ? '반복 종료 날짜 (YYYY-MM-DD, 선택사항)' : 'Repeat End Date (YYYY-MM-DD, optional)',
+                style: 1,
+                placeholder: lang === 'ko' ? '예: 2025-12-31' : 'e.g., 2025-12-31',
+                required: false,
+              },
+            ],
+          },
+        ],
+      },
+    });
+  }
+
   // Handle monthly_day selection
   if (customId === 'monthly_day_select') {
     const dayOfMonth = data.values?.[0];
