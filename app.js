@@ -264,7 +264,9 @@ async function handleListMeetings(guildId, res) {
   const meetingList = upcomingMeetings
     .map(m => {
       const participants = JSON.parse(m.participants);
-      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${formatParticipants(participants)}`;
+      const repeatInfo = m.repeatType ? formatRepeatInfo(m.repeatType, lang, m.repeatEndDate) : '';
+      const repeatLabel = lang === 'ko' ? '반복' : 'Repeat';
+      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${formatParticipants(participants)}${repeatInfo ? `\n${repeatLabel}:${repeatInfo}` : ''}`;
     })
     .join('\n\n');
 
@@ -1427,10 +1429,8 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
         }).join('\n')
       : t('allRemindersPassed', lang);
 
-    const repeatKey = `repeat${repeatType.charAt(0).toUpperCase() + repeatType.slice(1)}`;
-    const repeatText = t(repeatKey, lang, { 
-      endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
-    });
+    // Format detailed repeat information using dbRepeatType (has detailed format)
+    const repeatText = formatRepeatInfo(dbRepeatType, lang, repeatEndDate ? repeatEndDate.toISOString() : null);
 
     // Check for conflicts with first occurrence (excluding the newly created meeting)
     const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId);
@@ -2301,6 +2301,71 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
   }
   
   return null;
+}
+
+/**
+ * Format repeat type information for display
+ * @param {string} repeatType - Repeat type string from database
+ * @param {string} lang - Language code (en/ko)
+ * @param {string|null} repeatEndDate - End date ISO string or null
+ * @returns {string} Formatted repeat text
+ */
+function formatRepeatInfo(repeatType, lang, repeatEndDate = null) {
+  if (!repeatType || repeatType === 'none') {
+    return '';
+  }
+
+  const endDateText = repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(new Date(repeatEndDate)) }) : '';
+  
+  // Parse repeat type string
+  if (repeatType.includes(':')) {
+    const parts = repeatType.split(':');
+    const baseType = parts[0];
+    
+    if (baseType === 'daily_except') {
+      // daily_except:0,6 (excluded weekdays)
+      const excludedWeekdayNums = parts[1].split(',').map(w => parseInt(w.trim()));
+      const weekdayNames = lang === 'ko' 
+        ? ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
+        : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const excludedDays = excludedWeekdayNums.map(w => weekdayNames[w]).join(', ');
+      return t('repeatDailyExcept', lang, { excludedDays, endDate: endDateText });
+    } else if (baseType === 'weekly') {
+      // weekly:1 (weekday number)
+      const weekdayNum = parseInt(parts[1]);
+      const weekdayNames = lang === 'ko' 
+        ? ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
+        : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return t('repeatWeeklyWithDay', lang, { weekday: weekdayNames[weekdayNum], endDate: endDateText });
+    } else if (baseType === 'biweekly') {
+      // biweekly:1 (weekday number)
+      const weekdayNum = parseInt(parts[1]);
+      const weekdayNames = lang === 'ko' 
+        ? ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
+        : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return t('repeatBiweeklyWithDay', lang, { weekday: weekdayNames[weekdayNum], endDate: endDateText });
+    } else if (baseType === 'monthly_day') {
+      // monthly_day:15 (day of month)
+      const dayOfMonth = parseInt(parts[1]);
+      return t('repeatMonthlyDay', lang, { dayOfMonth, endDate: endDateText });
+    } else if (baseType === 'monthly_weekday') {
+      // monthly_weekday:1:1 (weekOfMonth:weekday)
+      const weekOfMonth = parseInt(parts[1]);
+      const weekdayNum = parseInt(parts[2]);
+      const weekdayNames = lang === 'ko' 
+        ? ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
+        : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const weekOfMonthNames = lang === 'ko'
+        ? ['첫째 주', '둘째 주', '셋째 주', '넷째 주', '마지막 주']
+        : ['1st week', '2nd week', '3rd week', '4th week', 'last week'];
+      const weekOfMonthText = weekOfMonth === -1 ? weekOfMonthNames[4] : weekOfMonthNames[weekOfMonth - 1];
+      return t('repeatMonthlyWeekday', lang, { weekOfMonth: weekOfMonthText, weekday: weekdayNames[weekdayNum], endDate: endDateText });
+    }
+  }
+  
+  // Simple types (daily, weekly, biweekly, monthly)
+  const repeatKey = `repeat${repeatType.charAt(0).toUpperCase() + repeatType.slice(1)}`;
+  return t(repeatKey, lang, { endDate: endDateText });
 }
 
 /**
