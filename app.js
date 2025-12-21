@@ -1466,27 +1466,6 @@ async function handleModalSubmit(body, res) {
   }
 }
 
-/**
- * Handle modal submit interactions
- * @param {Object} body - Discord interaction body
- * @param {Object} res - Express response object
- * @returns {Promise<void>}
- */
-async function handleModalSubmit(body, res) {
-  // No modal submissions for meeting scheduling - all handled via command arguments
-  const { guild_id: guildId } = body;
-  const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
-  const lang = getGuildLanguage(settings);
-  
-  return res.send({
-    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: {
-      content: t('errorOccurred', lang, { message: 'Unknown modal submission' }),
-      flags: InteractionResponseFlags.EPHEMERAL,
-    },
-  });
-}
-
 // Helper functions for date calculations (kept for potential future use)
 /**
  * Get next occurrence of a weekday from a given date
