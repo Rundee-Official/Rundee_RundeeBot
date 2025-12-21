@@ -788,6 +788,9 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     const dbRepeatType = null;
     const repeatEndDate = null;
 
+    // Check for conflicting meetings BEFORE insertion
+    const conflictWarningBefore = checkMeetingConflict(guildId, meetingDate, null);
+
     // Validate channel access
     const isValid = await validateChannel(meetingChannelId);
     if (!isValid) {
@@ -813,6 +816,9 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     );
 
     const meetingId = result.lastInsertRowid;
+    
+    // Check for conflicts AFTER insertion (excluding the newly created meeting)
+    const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId);
 
     // Schedule reminders
     const reminderTimes = reminderMinutesArray.map(minutes => {
@@ -1251,8 +1257,8 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       endDate: repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(repeatEndDate) }) : ''
     });
 
-    // Check for conflicts with first occurrence
-    const conflictWarning = checkMeetingConflict(guildId, meetingDate, null);
+    // Check for conflicts with first occurrence (excluding the newly created meeting)
+    const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId);
     
     const scheduledMessage = t('meetingScheduled', lang, {
       title,
