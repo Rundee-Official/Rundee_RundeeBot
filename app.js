@@ -27,6 +27,11 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Temporary storage for deleted meetings (for undo functionality)
+// Stores deleted meeting data for 5 minutes
+const deletedMeetings = new Map();
+const UNDO_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
 // Middleware for GitHub webhooks (raw body for signature verification)
 app.use('/webhook/github', express.raw({ type: 'application/json' }), (req, res, next) => {
   if (process.env.GITHUB_WEBHOOK_SECRET) {
@@ -102,7 +107,7 @@ app.post('/interactions',
           if (name === 'list-meetings') {
             return await handleListMeetings(guildId, res);
           } else if (name === 'delete-meeting') {
-            return await handleDeleteMeeting(data, res);
+            return await handleDeleteMeeting(data, res, body);
           } else if (name === 'edit-meeting') {
             return await handleEditMeeting(data, res);
           } else if (name === 'set-meeting-channel') {
@@ -131,6 +136,7 @@ app.post('/interactions',
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
               content: t('errorOccurred', lang, { message: error.message }),
+              flags: InteractionResponseFlags.EPHEMERAL,
             },
           });
         }
@@ -247,6 +253,7 @@ async function handleListMeetings(guildId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('noMeetings', lang),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   }
@@ -286,6 +293,7 @@ async function handleListMeetings(guildId, res) {
     data: {
       content: t('meetingsList', lang, { list: meetingList }),
       components: components.length > 0 ? components : undefined,
+      flags: InteractionResponseFlags.EPHEMERAL,
     },
   });
 }
@@ -296,7 +304,7 @@ async function handleListMeetings(guildId, res) {
  * @param {Object} res - Express response object
  * @returns {Promise<void>}
  */
-async function handleDeleteMeeting(data, res) {
+async function handleDeleteMeeting(data, res, body) {
   const meetingId = parseInt(data.options?.find(opt => opt.name === 'meeting_id')?.value);
   
   // Get guild ID from meeting to determine language
@@ -307,6 +315,7 @@ async function handleDeleteMeeting(data, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('meetingNotFound', 'en', { id: meetingId }),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   }
@@ -314,7 +323,42 @@ async function handleDeleteMeeting(data, res) {
   const settings = guildSettingsQueries.get.get(meeting.guild_id);
   const lang = getGuildLanguage(settings);
 
+  // Store deleted meeting data for undo (5 minutes)
+  const deletedMeetingData = {
+    id: meeting.id,
+    guild_id: meeting.guild_id,
+    title: meeting.title,
+    date: meeting.date,
+    participants: meeting.participants,
+    channel_id: meeting.channel_id,
+    reminder_minutes: meeting.reminder_minutes,
+    repeat_type: meeting.repeat_type,
+    repeat_interval: meeting.repeat_interval,
+    repeat_end_date: meeting.repeat_end_date,
+    deletedAt: Date.now(),
+  };
+  deletedMeetings.set(meetingId, deletedMeetingData);
+  
+  // Auto-remove after timeout
+  setTimeout(() => {
+    deletedMeetings.delete(meetingId);
+  }, UNDO_TIMEOUT);
+
   meetingQueries.delete.run(meetingId);
+
+  // Create undo button
+  const undoButton = {
+    type: 1, // ACTION_ROW
+    components: [
+      {
+        type: 2, // BUTTON
+        style: 1, // PRIMARY (blue)
+        label: lang === 'ko' ? '되돌리기 (Undo)' : 'Undo',
+        custom_id: `undo_delete_${meetingId}`,
+        emoji: { name: '↩️' },
+      },
+    ],
+  };
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -323,6 +367,8 @@ async function handleDeleteMeeting(data, res) {
         title: meeting.title,
         date: formatDateTime(new Date(meeting.date)),
       }),
+      components: [undoButton],
+      // No EPHEMERAL flag - visible to everyone
     },
   });
 }
@@ -342,6 +388,7 @@ async function handleEditMeeting(data, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('meetingNotFound', 'en', { id: meetingId }),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   }
@@ -365,10 +412,11 @@ async function handleEditMeeting(data, res) {
     if (!date) {
       date = new Date(dateOption.value);
       if (isNaN(date.getTime())) {
-        return res.send({
+          return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
             content: t('invalidDate', lang) + (lang === 'ko' ? '\n\n예: 2025-12-25 14:30, 1시간 후, 내일 오후 3시' : '\n\nExamples: 2025-12-25 14:30, 1 hour later, tomorrow 3pm'),
+            flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
       }
@@ -445,6 +493,7 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('serverOnlyCommand', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -459,6 +508,7 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('invalidChannelError', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -471,6 +521,7 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('errorOccurred', lang, { message: `Database error: ${dbError.message}` }),
+        flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -479,6 +530,7 @@ async function handleSetMeetingChannel(data, guildId, channelId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('meetingChannelSet', lang, { channelId: targetChannelId }),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   } catch (error) {
@@ -507,6 +559,7 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('serverOnlyCommand', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -521,6 +574,7 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('invalidChannelError', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -533,6 +587,7 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('errorOccurred', lang, { message: `Database error: ${dbError.message}` }),
+        flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -541,6 +596,7 @@ async function handleSetGithubChannel(data, guildId, channelId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('githubChannelSet', lang, { channelId: targetChannelId }),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   } catch (error) {
@@ -605,6 +661,7 @@ async function handleSetLanguage(data, guildId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('languageSet', lang),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   } catch (error) {
@@ -670,6 +727,7 @@ async function handleChannelStatus(guildId, res) {
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
       content,
+      flags: InteractionResponseFlags.EPHEMERAL,
     },
   });
 }
@@ -701,6 +759,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('serverOnlyCommand', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -751,10 +810,11 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       // Fallback to standard date parsing
       meetingDate = new Date(dateStr);
       if (isNaN(meetingDate.getTime())) {
-        return res.send({
+          return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
             content: t('invalidDate', lang) + (lang === 'ko' ? '\n\n예: 2025-12-25 14:30, 1시간 후, 내일 오후 3시' : '\n\nExamples: 2025-12-25 14:30, 1 hour later, tomorrow 3pm'),
+            flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
       }
@@ -798,6 +858,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('invalidChannelError', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -855,6 +916,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: finalMessage,
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   } catch (error) {
@@ -925,7 +987,42 @@ async function handleMessageComponent(body, res) {
     const meetingTitle = meeting.title;
     const meetingDate = formatDateTime(new Date(meeting.date));
     
+    // Store deleted meeting data for undo (5 minutes)
+    const deletedMeetingData = {
+      id: meeting.id,
+      guild_id: meeting.guild_id,
+      title: meeting.title,
+      date: meeting.date,
+      participants: meeting.participants,
+      channel_id: meeting.channel_id,
+      reminder_minutes: meeting.reminder_minutes,
+      repeat_type: meeting.repeat_type,
+      repeat_interval: meeting.repeat_interval,
+      repeat_end_date: meeting.repeat_end_date,
+      deletedAt: Date.now(),
+    };
+    deletedMeetings.set(meetingId, deletedMeetingData);
+    
+    // Auto-remove after timeout
+    setTimeout(() => {
+      deletedMeetings.delete(meetingId);
+    }, UNDO_TIMEOUT);
+    
     meetingQueries.delete.run(meetingId);
+
+    // Create undo button
+    const undoButton = {
+      type: 1, // ACTION_ROW
+      components: [
+        {
+          type: 2, // BUTTON
+          style: 1, // PRIMARY (blue)
+          label: lang === 'ko' ? '되돌리기 (Undo)' : 'Undo',
+          custom_id: `undo_delete_${meetingId}`,
+          emoji: { name: '↩️' },
+        },
+      ],
+    };
 
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -934,9 +1031,84 @@ async function handleMessageComponent(body, res) {
           title: meetingTitle,
           date: meetingDate,
         }),
-        flags: InteractionResponseFlags.EPHEMERAL,
+        components: [undoButton],
+        // No EPHEMERAL flag - visible to everyone
       },
     });
+  }
+  
+  // Handle undo delete button
+  if (componentType === 2 && customId && customId.startsWith('undo_delete_')) {
+    const meetingId = parseInt(customId.replace('undo_delete_', ''));
+    
+    if (isNaN(meetingId)) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Invalid meeting ID' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+    
+    const deletedMeeting = deletedMeetings.get(meetingId);
+    if (!deletedMeeting) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: lang === 'ko' ? '되돌릴 수 없습니다. 삭제된 지 5분이 지났거나 이미 복구되었습니다.' : 'Cannot undo. The meeting was deleted more than 5 minutes ago or has already been restored.',
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+    
+    // Check if meeting was deleted from same guild
+    if (deletedMeeting.guild_id !== guildId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Cannot undo meeting from different server' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+    
+    // Restore meeting
+    try {
+      meetingQueries.insert.run(
+        deletedMeeting.guild_id,
+        deletedMeeting.title,
+        deletedMeeting.date,
+        deletedMeeting.participants,
+        deletedMeeting.channel_id,
+        deletedMeeting.reminder_minutes,
+        deletedMeeting.repeat_type,
+        deletedMeeting.repeat_interval,
+        deletedMeeting.repeat_end_date
+      );
+      
+      // Remove from deleted meetings cache
+      deletedMeetings.delete(meetingId);
+      
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: lang === 'ko' 
+            ? `✅ 회의가 복구되었습니다: **${deletedMeeting.title}** (${formatDateTime(new Date(deletedMeeting.date))})`
+            : `✅ Meeting restored: **${deletedMeeting.title}** (${formatDateTime(new Date(deletedMeeting.date))})`,
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    } catch (error) {
+      console.error('Error restoring meeting:', error);
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Failed to restore meeting' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
   }
 
   // Unknown component interaction
@@ -988,6 +1160,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('serverOnlyCommand', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -1180,6 +1353,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('errorOccurred', lang, { message: 'Invalid repeat type' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -1216,6 +1390,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: t('invalidChannelError', lang),
+          flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
     }
@@ -1277,6 +1452,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: finalMessage,
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   } catch (error) {
@@ -1425,6 +1601,7 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('errorOccurred', lang, { message: 'Repository URL is required.' }),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   }
@@ -1462,6 +1639,7 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
             content: t('invalidGithubUrl', lang),
+        flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
       }
@@ -1471,6 +1649,7 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content: t('errorOccurred', lang, { message: 'Failed to parse GitHub repository URL.' }),
+        flags: InteractionResponseFlags.EPHEMERAL,
       },
     });
   }
@@ -1503,6 +1682,7 @@ async function handleSetupGitHub(data, guildId, channelId, res) {
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
     data: {
       content: responseMessage,
+      flags: InteractionResponseFlags.EPHEMERAL,
     },
   });
 }
