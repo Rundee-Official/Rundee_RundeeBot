@@ -656,7 +656,7 @@ async function handleTestMeeting(data, guildId, channelId, res) {
         reminderTimes: `${formatDateTime(new Date(testDate.getTime() - 60 * 1000))} (1 min before)`,
         repeatText: '',
         id: meetingId,
-      }) + '\n\n⚠️ **This is a test meeting. Reminder should arrive in about 1 minute.**',
+      }) + '\n\n**Note: This is a test meeting. Reminder should arrive in about 1 minute.**',
     },
   });
 }
@@ -831,7 +831,7 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
       if (reminded.includes(reminderMinutes)) return;
 
       const mentions = participants.map(p => `<@${p}>`).join(' ');
-      const message = `📢 **회의 알림**\n\n${mentions}\n\n**${title}**\n⏰ 일시: ${formatDateTime(date)}\n\n${reminderMinutes}분 후 회의가 시작됩니다!`;
+      const message = `**Meeting Reminder**\n\n${mentions}\n\n**${title}**\n**Date:** ${formatDateTime(date)}\n\nMeeting starts in ${reminderMinutes} minute(s)!`;
 
       await sendMessage(channelId, message);
       
@@ -951,8 +951,8 @@ async function handleGitHubPush(payload, guilds) {
 
     try {
       const commitMessages = commits.slice(0, 5).map(c => `  • ${c.message.split('\n')[0]} (${c.author.name})`).join('\n');
-      const moreCommits = commits.length > 5 ? `\n  ... 및 ${commits.length - 5}개의 커밋 더` : '';
-      const message = `🔔 **GitHub Push 이벤트**\n\n**저장소:** ${repository.full_name}\n**브랜치:** ${branch}\n**작성자:** ${pusher.name}\n**커밋 수:** ${commits.length}\n\n**커밋 내역:**\n${commitMessages}${moreCommits}\n\n🔗 [보기](${payload.compare})`;
+      const moreCommits = commits.length > 5 ? `\n  ... and ${commits.length - 5} more commits` : '';
+      const message = `**GitHub Push Event**\n\n**Repository:** ${repository.full_name}\n**Branch:** ${branch}\n**Author:** ${pusher.name}\n**Commits:** ${commits.length}\n\n**Commit History:**\n${commitMessages}${moreCommits}\n\n[View](${payload.compare})`;
 
       await sendMessage(guild.github_channel_id, message);
     } catch (error) {
@@ -975,12 +975,12 @@ async function handleGitHubPullRequest(payload, guilds) {
     try {
       let message = '';
       if (action === 'opened') {
-        message = `🔀 **GitHub Pull Request 열림**\n\n**저장소:** ${repository.full_name}\n**PR 제목:** ${pullRequest.title}\n**작성자:** ${pullRequest.user.login}\n**베이스:** ${pullRequest.base.ref} ← **헤드:** ${pullRequest.head.ref}\n\n🔗 [PR 보기](${pullRequest.html_url})`;
+        message = `**GitHub Pull Request Opened**\n\n**Repository:** ${repository.full_name}\n**PR Title:** ${pullRequest.title}\n**Author:** ${pullRequest.user.login}\n**Base:** ${pullRequest.base.ref} <- **Head:** ${pullRequest.head.ref}\n\n[View PR](${pullRequest.html_url})`;
       } else if (action === 'closed' && pullRequest.merged) {
         const merger = pullRequest.merged_by;
-        message = `✅ **GitHub Pull Request 머지됨**\n\n**저장소:** ${repository.full_name}\n**PR 제목:** ${pullRequest.title}\n**작성자:** ${pullRequest.user.login}\n**머지한 사람:** ${merger.login}\n**베이스 브랜치:** ${pullRequest.base.ref}\n**머지 브랜치:** ${pullRequest.head.ref}\n\n🔗 [PR 보기](${pullRequest.html_url})`;
+        message = `**GitHub Pull Request Merged**\n\n**Repository:** ${repository.full_name}\n**PR Title:** ${pullRequest.title}\n**Author:** ${pullRequest.user.login}\n**Merged by:** ${merger.login}\n**Base Branch:** ${pullRequest.base.ref}\n**Merge Branch:** ${pullRequest.head.ref}\n\n[View PR](${pullRequest.html_url})`;
       } else if (action === 'closed') {
-        message = `❌ **GitHub Pull Request 닫힘**\n\n**저장소:** ${repository.full_name}\n**PR 제목:** ${pullRequest.title}\n**작성자:** ${pullRequest.user.login}\n\n🔗 [PR 보기](${pullRequest.html_url})`;
+        message = `**GitHub Pull Request Closed**\n\n**Repository:** ${repository.full_name}\n**PR Title:** ${pullRequest.title}\n**Author:** ${pullRequest.user.login}\n\n[View PR](${pullRequest.html_url})`;
       }
 
       if (message) {
@@ -1006,9 +1006,9 @@ async function handleGitHubIssue(payload, guilds) {
     try {
       let message = '';
       if (action === 'opened') {
-        message = `📝 **GitHub Issue 열림**\n\n**저장소:** ${repository.full_name}\n**제목:** ${issue.title}\n**작성자:** ${issue.user.login}\n**라벨:** ${issue.labels.map(l => l.name).join(', ') || '없음'}\n\n${issue.body ? issue.body.substring(0, 200) + (issue.body.length > 200 ? '...' : '') : ''}\n\n🔗 [Issue 보기](${issue.html_url})`;
+        message = `**GitHub Issue Opened**\n\n**Repository:** ${repository.full_name}\n**Title:** ${issue.title}\n**Author:** ${issue.user.login}\n**Labels:** ${issue.labels.map(l => l.name).join(', ') || 'None'}\n\n${issue.body ? issue.body.substring(0, 200) + (issue.body.length > 200 ? '...' : '') : ''}\n\n[View Issue](${issue.html_url})`;
       } else if (action === 'closed') {
-        message = `✅ **GitHub Issue 닫힘**\n\n**저장소:** ${repository.full_name}\n**제목:** ${issue.title}\n**작성자:** ${issue.user.login}\n**닫은 사람:** ${issue.closed_by?.login || '알 수 없음'}\n\n🔗 [Issue 보기](${issue.html_url})`;
+        message = `**GitHub Issue Closed**\n\n**Repository:** ${repository.full_name}\n**Title:** ${issue.title}\n**Author:** ${issue.user.login}\n**Closed by:** ${issue.closed_by?.login || 'Unknown'}\n\n[View Issue](${issue.html_url})`;
       }
 
       if (message) {
@@ -1059,7 +1059,7 @@ cron.schedule('* * * * *', async () => {
           try {
             const participants = JSON.parse(meeting.participants);
             const mentions = participants.map(p => `<@${p}>`).join(' ');
-            const message = `📢 **회의 알림**\n\n${mentions}\n\n**${meeting.title}**\n⏰ 일시: ${formatDateTime(meetingDate)}\n\n${reminderMinutesValue}분 후 회의가 시작됩니다!`;
+            const message = `**Meeting Reminder**\n\n${mentions}\n\n**${meeting.title}**\n**Date:** ${formatDateTime(meetingDate)}\n\nMeeting starts in ${reminderMinutesValue} minute(s)!`;
 
             await sendMessage(meeting.channelId, message);
             
