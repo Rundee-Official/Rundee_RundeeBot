@@ -837,12 +837,6 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
       
       reminded.push(reminderMinutes);
       meetingQueries.updateReminded.run(JSON.stringify(reminded), meetingId);
-
-      // Handle recurring meetings - schedule next occurrence after reminder sent
-      if (meeting.repeat_type && meeting.repeat_type !== 'none') {
-        // Wait a bit, then create next occurrence
-        setTimeout(() => handleRecurringMeeting(meeting), 1000);
-      }
     } catch (error) {
       console.error('Error sending meeting reminder:', error);
     }
@@ -1057,9 +1051,16 @@ cron.schedule('* * * * *', async () => {
         
         if (reminderTime >= now && reminderTime <= oneMinuteLater) {
           try {
+            const settings = guildSettingsQueries.get.get(meeting.guildId);
+            const lang = getGuildLanguage(settings);
             const participants = JSON.parse(meeting.participants);
             const mentions = participants.map(p => `<@${p}>`).join(' ');
-            const message = `**Meeting Reminder**\n\n${mentions}\n\n**${meeting.title}**\n**Date:** ${formatDateTime(meetingDate)}\n\nMeeting starts in ${reminderMinutesValue} minute(s)!`;
+            const message = t('meetingReminder', lang, {
+              mentions,
+              title: meeting.title,
+              date: formatDateTime(meetingDate),
+              minutes: reminderMinutesValue,
+            });
 
             await sendMessage(meeting.channelId, message);
             
@@ -1067,6 +1068,23 @@ cron.schedule('* * * * *', async () => {
             meetingQueries.updateReminded.run(JSON.stringify(reminded), meeting.id);
           } catch (error) {
             console.error('Error sending meeting reminder:', error);
+          }
+        }
+      }
+
+      // Check if meeting time has passed and all reminders sent, then handle recurring meetings
+      if (meetingDate <= now && meeting.repeatType && meeting.repeatType !== 'none') {
+        // Check if all reminders have been sent
+        const allRemindersSent = reminderMinutes.every(min => reminded.includes(min));
+        
+        if (allRemindersSent) {
+          try {
+            // Create next occurrence before deleting current meeting
+            await handleRecurringMeeting(meetingRow);
+            // Delete the original meeting after creating next occurrence
+            meetingQueries.delete.run(meeting.id);
+          } catch (error) {
+            console.error('Error handling recurring meeting:', error);
           }
         }
       }
