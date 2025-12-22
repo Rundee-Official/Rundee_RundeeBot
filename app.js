@@ -2582,12 +2582,27 @@ function getTimezoneOffset(timezone = 'Asia/Seoul', date = new Date()) {
 }
 
 /**
- * Parse relative date string to Date object
- * Supports: "1시간 후", "2 hours later", "내일 오후 3시", "tomorrow 3pm", "다음 주 월요일", "next Monday"
- * @param {string} dateStr - Relative date string or standard date format
- * @param {Date} baseDate - Base date to calculate from (default: now)
- * @param {string} timezone - Timezone name (e.g., 'Asia/Seoul', default: 'Asia/Seoul')
- * @returns {Date|null} Parsed date or null if invalid
+ * Parse date string to Date object, interpreting it in the specified timezone
+ * Supports multiple formats:
+ * - Standard format: "YYYY-MM-DD HH:mm" (interpreted as local time in timezone, then converted to UTC)
+ * - Relative formats: "1시간 후", "2 hours later", "내일 오후 3시", "tomorrow 3pm", etc.
+ * 
+ * All times are interpreted as local time in the specified timezone,
+ * then converted to UTC for storage. This ensures consistent behavior
+ * regardless of server's local timezone.
+ * 
+ * @param {string} dateStr - Date string to parse (relative or absolute)
+ * @param {Date} baseDate - Base date for relative calculations (default: current time)
+ * @param {string} timezone - IANA timezone name (e.g., 'Asia/Seoul', 'America/New_York')
+ * @returns {Date|null} Parsed date in UTC, or null if invalid
+ * @example
+ *   // Standard format (interpreted in timezone)
+ *   parseRelativeDate('2025-12-23 14:00', new Date(), 'Asia/Seoul')
+ *   // Returns UTC Date representing 14:00 KST (05:00 UTC)
+ * 
+ *   // Relative format
+ *   parseRelativeDate('1시간 후', new Date(), 'Asia/Seoul')
+ *   // Returns UTC Date representing 1 hour from now in KST
  */
 function parseRelativeDate(dateStr, baseDate = new Date(), timezone = 'Asia/Seoul') {
   if (!dateStr || typeof dateStr !== 'string') return null;
