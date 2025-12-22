@@ -2680,18 +2680,90 @@ function formatRepeatInfo(repeatType, lang, repeatEndDate = null, timezone = 'As
  * @returns {string} Timezone abbreviation
  */
 function getTimezoneAbbreviation(timezone = 'Asia/Seoul', date = new Date()) {
+  // Direct mapping for timezones without DST
+  const staticTimezoneMap = {
+    'Asia/Seoul': 'KST',
+    'Asia/Tokyo': 'JST',
+    'Asia/Shanghai': 'CST',
+    'Asia/Hong_Kong': 'HKT',
+    'Asia/Singapore': 'SGT',
+    'UTC': 'UTC',
+  };
+
+  if (staticTimezoneMap[timezone]) {
+    return staticTimezoneMap[timezone];
+  }
+
+  // For DST-aware timezones, use Intl API to determine if DST is active
+  // and map to appropriate abbreviation
   try {
-    const formatter = new Intl.DateTimeFormat('en', {
+    const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       timeZoneName: 'short'
     });
     const parts = formatter.formatToParts(date);
     const tzName = parts.find(p => p.type === 'timeZoneName')?.value;
-    return tzName || timezone.split('/').pop()?.substring(0, 3).toUpperCase() || timezone;
+    
+    // If we get a proper abbreviation (not GMT offset), use it
+    if (tzName && !tzName.startsWith('GMT') && !tzName.startsWith('UTC')) {
+      // For some timezones, Intl API returns good abbreviations
+      // Map common variations to standard abbreviations
+      const abbreviationMap = {
+        'GMT': 'GMT',
+        'BST': 'BST',
+        'CET': 'CET',
+        'CEST': 'CEST',
+        'EST': 'EST',
+        'EDT': 'EDT',
+        'CST': 'CST',
+        'CDT': 'CDT',
+        'MST': 'MST',
+        'MDT': 'MDT',
+        'PST': 'PST',
+        'PDT': 'PDT',
+        'AEDT': 'AEDT',
+        'AEST': 'AEST',
+      };
+      
+      if (abbreviationMap[tzName]) {
+        return abbreviationMap[tzName];
+      }
+      
+      // If it's a valid abbreviation (3-4 letters), use it
+      if (/^[A-Z]{3,4}$/.test(tzName)) {
+        return tzName;
+      }
+    }
+
+    // Fallback: determine from offset for DST-aware timezones
+    const utcTime = date.getTime() + (date.getTimezoneOffset() * 60000);
+    const tzTime = new Date(utcTime).toLocaleString('en-US', { timeZone: timezone });
+    const tzOffset = new Date(tzTime).getTime() - new Date(utcTime).getTime();
+    const offsetHours = Math.round(tzOffset / (1000 * 60 * 60));
+
+    const dstAwareMap = {
+      'Europe/London': offsetHours === 0 ? 'GMT' : 'BST',
+      'Europe/Paris': offsetHours === 1 ? 'CET' : 'CEST',
+      'Europe/Berlin': offsetHours === 1 ? 'CET' : 'CEST',
+      'America/New_York': offsetHours === -5 ? 'EST' : 'EDT',
+      'America/Chicago': offsetHours === -6 ? 'CST' : 'CDT',
+      'America/Denver': offsetHours === -7 ? 'MST' : 'MDT',
+      'America/Los_Angeles': offsetHours === -8 ? 'PST' : 'PDT',
+      'America/Toronto': offsetHours === -5 ? 'EST' : 'EDT',
+      'Australia/Sydney': offsetHours >= 11 ? 'AEDT' : 'AEST',
+      'Australia/Melbourne': offsetHours >= 11 ? 'AEDT' : 'AEST',
+    };
+
+    if (dstAwareMap[timezone]) {
+      return dstAwareMap[timezone];
+    }
   } catch (error) {
     console.error(`Error getting timezone abbreviation for ${timezone}:`, error);
-    return timezone.split('/').pop()?.substring(0, 3).toUpperCase() || timezone;
   }
+
+  // Final fallback: use last part of timezone name
+  const fallback = timezone.split('/').pop()?.substring(0, 3).toUpperCase() || timezone;
+  return fallback;
 }
 
 /**
