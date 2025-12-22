@@ -59,6 +59,21 @@ try {
   CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(date);
 `);
   console.log('Database tables initialized successfully');
+  
+  // Migration: Add timezone column if it doesn't exist
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(guild_settings)").all();
+    const hasTimezoneColumn = tableInfo.some(col => col.name === 'timezone');
+    
+    if (!hasTimezoneColumn) {
+      console.log('Adding timezone column to guild_settings table...');
+      db.exec(`ALTER TABLE guild_settings ADD COLUMN timezone TEXT DEFAULT 'Asia/Seoul'`);
+      console.log('Timezone column added successfully');
+    }
+  } catch (migrationError) {
+    console.error('Error during migration:', migrationError);
+    // Don't throw - allow app to continue even if migration fails
+  }
 } catch (error) {
   console.error('Failed to initialize database tables:', error);
   throw error;
