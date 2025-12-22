@@ -149,6 +149,9 @@ app.post('/interactions',
               if (subcommand === 'language') {
                 const convertedData = { options: subcommandOptions };
                 return await handleSetLanguage(convertedData, guildId, res);
+              } else if (subcommand === 'timezone') {
+                const convertedData = { options: subcommandOptions };
+                return await handleSetTimezone(convertedData, guildId, res);
               } else if (subcommand === 'status') {
                 return await handleChannelStatus(guildId, res);
               }
@@ -267,6 +270,7 @@ app.post('/webhook/github', async (req, res) => {
 async function handleListMeetings(guildId, res) {
   const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
   const lang = getGuildLanguage(settings);
+  const timezone = settings?.timezone || 'Asia/Seoul';
   
   const meetings = guildId
     ? meetingQueries.getUpcomingByGuild.all(guildId)
@@ -293,8 +297,8 @@ async function handleListMeetings(guildId, res) {
   const meetingList = upcomingMeetings
     .map(m => {
       const participants = JSON.parse(m.participants);
-      const repeatInfo = m.repeatType ? formatRepeatInfo(m.repeatType, lang, m.repeatEndDate) : '';
-      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${formatParticipants(participants)}${repeatInfo}`;
+      const repeatInfo = m.repeatType ? formatRepeatInfo(m.repeatType, lang, m.repeatEndDate, timezone) : '';
+      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date), timezone)}\n${participantsLabel}: ${formatParticipants(participants)}${repeatInfo}`;
     })
     .join('\n\n');
 
@@ -352,6 +356,7 @@ async function handleDeleteMeeting(data, res, body) {
   
   const settings = guildSettingsQueries.get.get(meeting.guild_id);
   const lang = getGuildLanguage(settings);
+  const timezone = settings?.timezone || 'Asia/Seoul';
 
   // Store deleted meeting data for undo (5 minutes)
   const deletedMeetingData = {
@@ -395,7 +400,7 @@ async function handleDeleteMeeting(data, res, body) {
     data: {
       content: t('meetingDeleted', lang, {
         title: meeting.title,
-        date: formatDateTime(new Date(meeting.date)),
+        date: formatDateTime(new Date(meeting.date), timezone),
       }),
       components: [undoButton],
       // No EPHEMERAL flag - visible to everyone
@@ -425,6 +430,7 @@ async function handleEditMeeting(data, res) {
   
   const settings = guildSettingsQueries.get.get(meeting.guild_id);
   const lang = getGuildLanguage(settings);
+  const timezone = settings?.timezone || 'Asia/Seoul';
 
   const dbMeeting = dbToMeeting(meeting);
   let title = dbMeeting.title;
@@ -438,7 +444,7 @@ async function handleEditMeeting(data, res) {
 
   const dateOption = data.options?.find(opt => opt.name === 'date');
   if (dateOption) {
-    date = parseRelativeDate(dateOption.value);
+    date = parseRelativeDate(dateOption.value, new Date(), timezone);
     if (!date) {
       date = new Date(dateOption.value);
       if (isNaN(date.getTime())) {
@@ -453,7 +459,7 @@ async function handleEditMeeting(data, res) {
     }
     
     // Check for conflicts (excluding current meeting)
-    const conflictWarning = checkMeetingConflict(meeting.guild_id, date, meetingId);
+    const conflictWarning = checkMeetingConflict(meeting.guild_id, date, meetingId, timezone);
     if (conflictWarning) {
       // Still allow the edit, but show warning
     }
@@ -486,13 +492,13 @@ async function handleEditMeeting(data, res) {
 
   const editedMessage = t('meetingEdited', lang, {
     title,
-    date: formatDateTime(date),
+    date: formatDateTime(date, timezone),
     participants: formatParticipants(participants),
     id: meetingId,
   });
   
   // Check for conflicts if date was changed
-  const conflictWarning = dateOption ? checkMeetingConflict(meeting.guild_id, date, meetingId) : null;
+  const conflictWarning = dateOption ? checkMeetingConflict(meeting.guild_id, date, meetingId, timezone) : null;
   const finalMessage = conflictWarning 
     ? `${editedMessage}\n\n${conflictWarning}`
     : editedMessage;
@@ -706,6 +712,94 @@ async function handleSetLanguage(data, guildId, res) {
 }
 
 /**
+ * Handle set-timezone command
+ * @param {Object} data - Command data from Discord
+ * @param {string} guildId - Guild ID
+ * @param {Object} res - Express response object
+ * @returns {Promise<void>}
+ */
+async function handleSetTimezone(data, guildId, res) {
+  try {
+    if (!guildId) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('serverOnlyCommand', 'en'),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+
+    const timezoneOption = data.options?.find(opt => opt.name === 'timezone');
+    const timezone = timezoneOption?.value;
+
+    if (!timezone) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', 'en', { message: 'Timezone is required.' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+
+    // Validate timezone (basic validation - could be enhanced)
+    const validTimezones = [
+      'Asia/Seoul', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Singapore',
+      'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+      'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Toronto',
+      'Australia/Sydney', 'Australia/Melbourne', 'UTC'
+    ];
+    
+    if (!validTimezones.includes(timezone)) {
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', 'en', { message: 'Invalid timezone.' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+
+    try {
+      guildSettingsQueries.setTimezone.run(guildId, timezone);
+      const settings = guildSettingsQueries.get.get(guildId);
+      const lang = getGuildLanguage(settings);
+      
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('timezoneSet', lang, { timezone }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    } catch (dbError) {
+      console.error('Database error in handleSetTimezone:', dbError);
+      const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+      const lang = getGuildLanguage(settings);
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          content: t('errorOccurred', lang, { message: 'Failed to update timezone in database.' }),
+          flags: InteractionResponseFlags.EPHEMERAL,
+        },
+      });
+    }
+  } catch (error) {
+    console.error('Error in handleSetTimezone:', error);
+    const settings = guildId ? guildSettingsQueries.get.get(guildId) : null;
+    const lang = getGuildLanguage(settings);
+    return res.send({
+      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+      data: {
+        content: t('errorOccurred', lang, { message: error.message }),
+        flags: InteractionResponseFlags.EPHEMERAL,
+      },
+    });
+  }
+}
+
+/**
  * Handle channel-status command
  */
 /**
@@ -783,6 +877,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
   try {
     const settings = guildSettingsQueries.get.get(guildId);
     const lang = getGuildLanguage(settings);
+    const timezone = settings?.timezone || 'Asia/Seoul';
     
     if (!guildId) {
       return res.send({
@@ -835,7 +930,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     }
 
     // Parse and validate date (supports relative time)
-    let meetingDate = parseRelativeDate(dateStr);
+    let meetingDate = parseRelativeDate(dateStr, new Date(), timezone);
     if (!meetingDate) {
       // Fallback to standard date parsing
       meetingDate = new Date(dateStr);
@@ -879,7 +974,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     const repeatEndDate = null;
 
     // Check for conflicting meetings BEFORE insertion
-    const conflictWarningBefore = checkMeetingConflict(guildId, meetingDate, null);
+    const conflictWarningBefore = checkMeetingConflict(guildId, meetingDate, null, timezone);
 
     // Validate channel access
     const isValid = await validateChannel(meetingChannelId);
@@ -909,7 +1004,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     const meetingId = result.lastInsertRowid;
     
     // Check for conflicts AFTER insertion (excluding the newly created meeting)
-    const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId);
+    const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId, timezone);
 
     // Schedule reminders
     const reminderTimes = reminderMinutesArray.map(minutes => {
@@ -924,14 +1019,14 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     const reminderTimesText = reminderTimes.length > 0
       ? reminderTimes.map(rt => {
           const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
-          return `${formatDateTime(rt.time)} (${minutesText})`;
+          return `${formatDateTime(rt.time, timezone)} (${minutesText})`;
         }).join('\n')
       : t('allRemindersPassed', lang);
 
     // Single meeting - no repeat text
     const scheduledMessage = t('meetingScheduled', lang, {
       title,
-      date: formatDateTime(meetingDate),
+      date: formatDateTime(meetingDate, timezone),
       participants: formatParticipants(participants),
       reminderTimes: reminderTimesText,
       repeatText: '',
@@ -1014,8 +1109,11 @@ async function handleMessageComponent(body, res) {
       });
     }
 
+    const settings = guildSettingsQueries.get.get(guildId);
+    const timezone = settings?.timezone || 'Asia/Seoul';
+    
     const meetingTitle = meeting.title;
-    const meetingDate = formatDateTime(new Date(meeting.date));
+    const meetingDate = formatDateTime(new Date(meeting.date), timezone);
     
     // Store deleted meeting data for undo (5 minutes)
     const deletedMeetingData = {
@@ -1120,12 +1218,15 @@ async function handleMessageComponent(body, res) {
       // Remove from deleted meetings cache
       deletedMeetings.delete(meetingId);
       
+      const settings = guildSettingsQueries.get.get(guildId);
+      const timezone = settings?.timezone || 'Asia/Seoul';
+      
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
           content: lang === 'ko' 
-            ? `✅ 회의가 복구되었습니다: **${deletedMeeting.title}** (${formatDateTime(new Date(deletedMeeting.date))})`
-            : `✅ Meeting restored: **${deletedMeeting.title}** (${formatDateTime(new Date(deletedMeeting.date))})`,
+            ? `✅ 회의가 복구되었습니다: **${deletedMeeting.title}** (${formatDateTime(new Date(deletedMeeting.date), timezone)})`
+            : `✅ Meeting restored: **${deletedMeeting.title}** (${formatDateTime(new Date(deletedMeeting.date), timezone)})`,
           flags: InteractionResponseFlags.EPHEMERAL,
         },
       });
@@ -1184,6 +1285,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
   try {
     const settings = guildSettingsQueries.get.get(guildId);
     const lang = getGuildLanguage(settings);
+    const timezone = settings?.timezone || 'Asia/Seoul';
     
     if (!guildId) {
       return res.send({
@@ -1453,19 +1555,19 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
     const reminderTimesText = reminderTimes.length > 0
       ? reminderTimes.map(rt => {
           const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
-          return `${formatDateTime(rt.time)} (${minutesText})`;
+          return `${formatDateTime(rt.time, timezone)} (${minutesText})`;
         }).join('\n')
       : t('allRemindersPassed', lang);
 
     // Format detailed repeat information using dbRepeatType (has detailed format)
-    const repeatText = formatRepeatInfo(dbRepeatType, lang, repeatEndDate ? repeatEndDate.toISOString() : null);
+    const repeatText = formatRepeatInfo(dbRepeatType, lang, repeatEndDate ? repeatEndDate.toISOString() : null, timezone);
 
     // Check for conflicts with first occurrence (excluding the newly created meeting)
-    const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId);
+    const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId, timezone);
     
     const scheduledMessage = t('meetingScheduled', lang, {
       title,
-      date: formatDateTime(meetingDate),
+      date: formatDateTime(meetingDate, timezone),
       participants: formatParticipants(participants),
       reminderTimes: reminderTimesText,
       repeatText,
@@ -1807,7 +1909,7 @@ function formatParticipantsMentions(participants) {
  * @param {number|null} excludeMeetingId - Meeting ID to exclude from check (for edits)
  * @returns {string|null} Warning message if conflict found, null otherwise
  */
-function checkMeetingConflict(guildId, meetingDate, excludeMeetingId = null) {
+function checkMeetingConflict(guildId, meetingDate, excludeMeetingId = null, timezone = 'Asia/Seoul') {
   const now = new Date();
   const meetings = guildId
     ? meetingQueries.getUpcomingByGuild.all(guildId)
@@ -1823,7 +1925,7 @@ function checkMeetingConflict(guildId, meetingDate, excludeMeetingId = null) {
   });
   
   if (conflicts.length > 0) {
-    const conflictList = conflicts.map(m => `- ${m.title} (${formatDateTime(new Date(m.date))})`).join('\n');
+    const conflictList = conflicts.map(m => `- ${m.title} (${formatDateTime(new Date(m.date), timezone)})`).join('\n');
     return `⚠️ Warning: There are ${conflicts.length} meeting(s) scheduled at a similar time:\n${conflictList}`;
   }
   
@@ -1860,6 +1962,10 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
   
   if (reminderTime <= new Date()) return;
 
+  // Get timezone from guild settings
+  const settings = guildSettingsQueries.get.get(guildId);
+  const timezone = settings?.timezone || 'Asia/Seoul';
+
   const minute = reminderTime.getMinutes();
   const hour = reminderTime.getHours();
   const day = reminderTime.getDate();
@@ -1876,13 +1982,14 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
       const reminded = JSON.parse(meeting.reminded || '[]');
       if (reminded.includes(reminderMinutes)) return;
 
-      const settings = guildSettingsQueries.get.get(guildId);
-      const lang = getGuildLanguage(settings);
+      const reminderSettings = guildSettingsQueries.get.get(guildId);
+      const lang = getGuildLanguage(reminderSettings);
+      const reminderTimezone = reminderSettings?.timezone || 'Asia/Seoul';
       const mentions = formatParticipantsMentions(participants);
       const message = t('meetingReminder', lang, {
         mentions,
         title,
-        date: formatDateTime(date),
+        date: formatDateTime(date, reminderTimezone),
         minutes: reminderMinutes,
       });
 
@@ -1895,7 +2002,7 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
     }
   }, {
     scheduled: true,
-    timezone: 'Asia/Seoul',
+    timezone: timezone,
   });
 }
 
@@ -2234,19 +2341,62 @@ async function handleGitHubIssue(payload, guilds) {
 }
 
 /**
+ * Get timezone offset in milliseconds for a given timezone
+ * @param {string} timezone - Timezone name (e.g., 'Asia/Seoul', 'America/New_York')
+ * @param {Date} date - Date to get offset for (default: now)
+ * @returns {number} Offset in milliseconds
+ */
+function getTimezoneOffset(timezone = 'Asia/Seoul', date = new Date()) {
+  try {
+    // Use Intl.DateTimeFormat to get timezone offset
+    const formatter = new Intl.DateTimeFormat('en', {
+      timeZone: timezone,
+      timeZoneName: 'longOffset'
+    });
+    const parts = formatter.formatToParts(date);
+    const offsetPart = parts.find(p => p.type === 'timeZoneName');
+    
+    // Parse offset string like "GMT+09:00" or "GMT-05:00"
+    if (offsetPart && offsetPart.value) {
+      const offsetStr = offsetPart.value.replace('GMT', '').trim();
+      const match = offsetStr.match(/^([+-])(\d{2}):(\d{2})$/);
+      if (match) {
+        const sign = match[1] === '+' ? 1 : -1;
+        const hours = parseInt(match[2]);
+        const minutes = parseInt(match[3]);
+        return sign * (hours * 60 + minutes) * 60 * 1000;
+      }
+    }
+    
+    // Fallback: try simpler approach using toLocaleString
+    const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+    return tzDate.getTime() - utcDate.getTime();
+  } catch (error) {
+    console.error(`Error getting timezone offset for ${timezone}:`, error);
+    // Default to Asia/Seoul (UTC+9) if timezone is invalid
+    return 9 * 60 * 60 * 1000;
+  }
+}
+
+/**
  * Parse relative date string to Date object
  * Supports: "1시간 후", "2 hours later", "내일 오후 3시", "tomorrow 3pm", "다음 주 월요일", "next Monday"
  * @param {string} dateStr - Relative date string or standard date format
  * @param {Date} baseDate - Base date to calculate from (default: now)
+ * @param {string} timezone - Timezone name (e.g., 'Asia/Seoul', default: 'Asia/Seoul')
  * @returns {Date|null} Parsed date or null if invalid
  */
-function parseRelativeDate(dateStr, baseDate = new Date()) {
+function parseRelativeDate(dateStr, baseDate = new Date(), timezone = 'Asia/Seoul') {
   if (!dateStr || typeof dateStr !== 'string') return null;
   
   const str = dateStr.trim().toLowerCase();
   
+  // Get timezone offset
+  const tzOffset = getTimezoneOffset(timezone, baseDate);
+  
   // Try standard date format first (YYYY-MM-DD HH:mm)
-  // Parse as KST (UTC+9) timezone explicitly
+  // Parse as specified timezone explicitly
   const standardDateFormat = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})$/;
   const standardMatch = dateStr.trim().match(standardDateFormat);
   if (standardMatch) {
@@ -2256,10 +2406,11 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
     const hours = parseInt(standardMatch[4]);
     const minutes = parseInt(standardMatch[5]);
     
-    // Create date in KST (UTC+9) - subtract 9 hours to convert to UTC
-    // This ensures the time is interpreted as KST
-    const kstDate = new Date(Date.UTC(year, month, day, hours - 9, minutes));
-    return kstDate;
+    // Create date in specified timezone - convert to UTC
+    // Offset is in milliseconds, convert to hours for calculation
+    const offsetHours = tzOffset / (60 * 60 * 1000);
+    const utcDate = new Date(Date.UTC(year, month, day, hours - offsetHours, minutes));
+    return utcDate;
   }
   
   // Fallback to default Date parsing for other formats
@@ -2295,11 +2446,10 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
     { regex: /(오전|am)\s*(\d{1,2})\s*:?\s*(\d{0,2})?/i, isAM: true },
   ];
   
-  // Get current time in KST (UTC+9)
-  const nowKST = new Date();
-  const kstOffset = 9 * 60 * 60 * 1000; // KST offset in milliseconds
-  const nowKSTTime = new Date(nowKST.getTime() + kstOffset);
-  const baseDateKST = baseDate ? new Date(baseDate.getTime() + kstOffset) : nowKSTTime;
+  // Get current time in specified timezone
+  const nowTZ = new Date();
+  const nowTZTime = new Date(nowTZ.getTime() + tzOffset);
+  const baseDateTZ = baseDate ? new Date(baseDate.getTime() + tzOffset) : nowTZTime;
   
   for (const pattern of patterns) {
     const match = str.match(pattern.regex);
@@ -2308,17 +2458,17 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
       const date = new Date(baseDate);
       
       if (pattern.isToday || pattern.isTomorrow) {
-        // Get KST date components
-        const baseKSTYear = baseDateKST.getUTCFullYear();
-        const baseKSTMonth = baseDateKST.getUTCMonth();
-        const baseKSTDate = baseDateKST.getUTCDate();
+        // Get timezone date components
+        const baseTZYear = baseDateTZ.getUTCFullYear();
+        const baseTZMonth = baseDateTZ.getUTCMonth();
+        const baseTZDate = baseDateTZ.getUTCDate();
         
         if (pattern.isTomorrow) {
-          const tomorrowKST = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate + 1));
-          date.setTime(tomorrowKST.getTime() - kstOffset);
+          const tomorrowTZ = new Date(Date.UTC(baseTZYear, baseTZMonth, baseTZDate + 1));
+          date.setTime(tomorrowTZ.getTime() - tzOffset);
         } else {
-          const todayKST = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate));
-          date.setTime(todayKST.getTime() - kstOffset);
+          const todayTZ = new Date(Date.UTC(baseTZYear, baseTZMonth, baseTZDate));
+          date.setTime(todayTZ.getTime() - tzOffset);
         }
         
         const hour = parseInt(match[2]);
@@ -2335,12 +2485,13 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
           finalHour = hour;
         }
         
-        // Set KST time (subtract offset to get UTC)
-        const kstTime = new Date(date.getTime() + kstOffset);
-        const kstYear = kstTime.getUTCFullYear();
-        const kstMonth = kstTime.getUTCMonth();
-        const kstDay = kstTime.getUTCDate();
-        const utcDate = new Date(Date.UTC(kstYear, kstMonth, kstDay, finalHour - 9, minute));
+        // Set timezone time (convert to UTC)
+        const tzTime = new Date(date.getTime() + tzOffset);
+        const tzYear = tzTime.getUTCFullYear();
+        const tzMonth = tzTime.getUTCMonth();
+        const tzDay = tzTime.getUTCDate();
+        const offsetHours = tzOffset / (60 * 60 * 1000);
+        const utcDate = new Date(Date.UTC(tzYear, tzMonth, tzDay, finalHour - offsetHours, minute));
         return utcDate;
       }
       
@@ -2355,23 +2506,24 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
           finalHour = 0;
         }
         
-        // Get KST date components
-        const baseKSTYear = baseDateKST.getUTCFullYear();
-        const baseKSTMonth = baseDateKST.getUTCMonth();
-        const baseKSTDate = baseDateKST.getUTCDate();
-        const baseKSTHours = baseDateKST.getUTCHours();
-        const baseKSTMinutes = baseDateKST.getUTCMinutes();
+        // Get timezone date components
+        const baseTZYear = baseDateTZ.getUTCFullYear();
+        const baseTZMonth = baseDateTZ.getUTCMonth();
+        const baseTZDate = baseDateTZ.getUTCDate();
+        const baseTZHours = baseDateTZ.getUTCHours();
+        const baseTZMinutes = baseDateTZ.getUTCMinutes();
         
-        // Create KST time
-        let kstDate = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate, finalHour, minute));
+        // Create timezone time
+        const offsetHours = tzOffset / (60 * 60 * 1000);
+        let tzDate = new Date(Date.UTC(baseTZYear, baseTZMonth, baseTZDate, finalHour, minute));
         
-        // If the time has passed today in KST, set for tomorrow
-        if (finalHour < baseKSTHours || (finalHour === baseKSTHours && minute <= baseKSTMinutes)) {
-          kstDate = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate + 1, finalHour, minute));
+        // If the time has passed today in timezone, set for tomorrow
+        if (finalHour < baseTZHours || (finalHour === baseTZHours && minute <= baseTZMinutes)) {
+          tzDate = new Date(Date.UTC(baseTZYear, baseTZMonth, baseTZDate + 1, finalHour, minute));
         }
         
-        // Convert KST to UTC (subtract 9 hours)
-        return new Date(kstDate.getTime() - kstOffset);
+        // Convert to UTC (subtract offset)
+        return new Date(tzDate.getTime() - tzOffset);
       }
       
       const value = pattern.value !== undefined ? pattern.value : parseInt(match[1]);
@@ -2400,12 +2552,12 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
  * @param {string|null} repeatEndDate - End date ISO string or null
  * @returns {string} Formatted repeat text
  */
-function formatRepeatInfo(repeatType, lang, repeatEndDate = null) {
+function formatRepeatInfo(repeatType, lang, repeatEndDate = null, timezone = 'Asia/Seoul') {
   if (!repeatType || repeatType === 'none') {
     return '';
   }
 
-  const endDateText = repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(new Date(repeatEndDate)) }) : '';
+  const endDateText = repeatEndDate ? t('repeatEndDate', lang, { date: formatDateTime(new Date(repeatEndDate), timezone) }) : '';
   
   // Parse repeat type string
   if (repeatType.includes(':')) {
@@ -2463,17 +2615,39 @@ function formatRepeatInfo(repeatType, lang, repeatEndDate = null) {
  * @param {Date|string} date - Date object or ISO string
  * @returns {string} Formatted date string
  */
-function formatDateTime(date) {
+function formatDateTime(date, timezone = 'Asia/Seoul') {
   if (typeof date === 'string') date = new Date(date);
-  // Convert UTC date to KST (UTC+9) for display
-  const kstOffset = 9 * 60; // KST is UTC+9 (in minutes)
-  const kstTime = new Date(date.getTime() + kstOffset * 60 * 1000);
-  const year = kstTime.getUTCFullYear();
-  const month = String(kstTime.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(kstTime.getUTCDate()).padStart(2, '0');
-  const hours = String(kstTime.getUTCHours()).padStart(2, '0');
-  const minutes = String(kstTime.getUTCMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
+  // Convert UTC date to specified timezone for display
+  try {
+    // Use Intl.DateTimeFormat to format date in specified timezone
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(date);
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    const day = parts.find(p => p.type === 'day')?.value;
+    const hours = parts.find(p => p.type === 'hour')?.value;
+    const minutes = parts.find(p => p.type === 'minute')?.value;
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  } catch (error) {
+    console.error(`Error formatting date with timezone ${timezone}:`, error);
+    // Fallback to UTC
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  }
 }
 
 /**
@@ -2502,12 +2676,13 @@ cron.schedule('* * * * *', async () => {
           try {
             const settings = guildSettingsQueries.get.get(meeting.guildId);
             const lang = getGuildLanguage(settings);
+            const timezone = settings?.timezone || 'Asia/Seoul';
             const participants = JSON.parse(meeting.participants);
             const mentions = formatParticipantsMentions(participants);
             const message = t('meetingReminder', lang, {
               mentions,
               title: meeting.title,
-              date: formatDateTime(meetingDate),
+              date: formatDateTime(meetingDate, timezone),
               minutes: reminderMinutesValue,
             });
 

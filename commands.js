@@ -274,6 +274,38 @@ const CONFIG_COMMAND = {
         },
       ],
     },
+    // timezone subcommand
+    {
+      type: 1, // SUB_COMMAND
+      name: 'timezone',
+      description: '서버 시간대를 설정합니다 (Set the server timezone)',
+      options: [
+        {
+          type: 3, // STRING
+          name: 'timezone',
+          description: 'Timezone (시간대)',
+          required: true,
+          choices: [
+            { name: 'Asia/Seoul (KST, UTC+9)', value: 'Asia/Seoul' },
+            { name: 'Asia/Tokyo (JST, UTC+9)', value: 'Asia/Tokyo' },
+            { name: 'Asia/Shanghai (CST, UTC+8)', value: 'Asia/Shanghai' },
+            { name: 'Asia/Hong_Kong (HKT, UTC+8)', value: 'Asia/Hong_Kong' },
+            { name: 'Asia/Singapore (SGT, UTC+8)', value: 'Asia/Singapore' },
+            { name: 'Europe/London (GMT/BST, UTC+0/+1)', value: 'Europe/London' },
+            { name: 'Europe/Paris (CET/CEST, UTC+1/+2)', value: 'Europe/Paris' },
+            { name: 'Europe/Berlin (CET/CEST, UTC+1/+2)', value: 'Europe/Berlin' },
+            { name: 'America/New_York (EST/EDT, UTC-5/-4)', value: 'America/New_York' },
+            { name: 'America/Chicago (CST/CDT, UTC-6/-5)', value: 'America/Chicago' },
+            { name: 'America/Denver (MST/MDT, UTC-7/-6)', value: 'America/Denver' },
+            { name: 'America/Los_Angeles (PST/PDT, UTC-8/-7)', value: 'America/Los_Angeles' },
+            { name: 'America/Toronto (EST/EDT, UTC-5/-4)', value: 'America/Toronto' },
+            { name: 'Australia/Sydney (AEDT, UTC+10/+11)', value: 'Australia/Sydney' },
+            { name: 'Australia/Melbourne (AEDT, UTC+10/+11)', value: 'Australia/Melbourne' },
+            { name: 'UTC (UTC+0)', value: 'UTC' },
+          ],
+        },
+      ],
+    },
     // status subcommand
     {
       type: 1, // SUB_COMMAND

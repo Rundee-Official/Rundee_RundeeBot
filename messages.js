@@ -47,6 +47,9 @@ export const messages = {
     // Language
     languageSet: 'Language set to English',
     
+    // Timezone
+    timezoneSet: 'Timezone set to {timezone}',
+    
     // Recurring
     repeatNone: '',
     repeatDaily: '\n**Repeat:** Daily{endDate}',
@@ -130,6 +133,9 @@ export const messages = {
     
     // Language
     languageSet: '언어가 한국어로 설정되었습니다.',
+    
+    // Timezone
+    timezoneSet: '시간대가 {timezone}로 설정되었습니다.',
     
     // Recurring
     repeatNone: '',

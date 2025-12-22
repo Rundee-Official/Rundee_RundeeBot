@@ -51,6 +51,7 @@ try {
     github_channel_id TEXT,
     github_repository TEXT,
     language TEXT DEFAULT 'en',
+    timezone TEXT DEFAULT 'Asia/Seoul',
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -144,6 +145,12 @@ export const guildSettingsQueries = {
     INSERT INTO guild_settings (guild_id, language)
     VALUES (?, ?)
     ON CONFLICT(guild_id) DO UPDATE SET language = excluded.language, updated_at = CURRENT_TIMESTAMP
+  `),
+  
+  setTimezone: db.prepare(`
+    INSERT INTO guild_settings (guild_id, timezone)
+    VALUES (?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET timezone = excluded.timezone, updated_at = CURRENT_TIMESTAMP
   `),
 };
 
