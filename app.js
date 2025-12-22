@@ -2469,11 +2469,25 @@ function parseRelativeDate(dateStr, baseDate = new Date(), timezone = 'Asia/Seou
     const hours = parseInt(standardMatch[4]);
     const minutes = parseInt(standardMatch[5]);
     
-    // Create date in specified timezone - convert to UTC
-    // Offset is in milliseconds, convert to hours for calculation
-    const offsetHours = tzOffset / (60 * 60 * 1000);
-    const utcDate = new Date(Date.UTC(year, month, day, hours - offsetHours, minutes));
-    return utcDate;
+    // Create a date string in ISO-like format: "YYYY-MM-DDTHH:mm:ss"
+    // Then create a Date object that represents this time in the specified timezone
+    // We'll use Intl to convert from the timezone to UTC
+    
+    // Step 1: Create a date string that represents the input time
+    const dateStrISO = `${standardMatch[1]}-${standardMatch[2]}-${standardMatch[3]}T${standardMatch[4].padStart(2, '0')}:${standardMatch[5]}:00`;
+    
+    // Step 2: Create a temporary UTC date to get the timezone offset for this specific date
+    // (offset can vary with DST)
+    const tempUTCDate = new Date(Date.UTC(year, month, day, hours, minutes, 0));
+    const offsetForDate = getTimezoneOffset(timezone, tempUTCDate);
+    
+    // Step 3: Convert from timezone to UTC
+    // If input is 14:00 in UTC+9 timezone, UTC is 14:00 - 9 = 05:00
+    // offsetForDate is positive for UTC+ (e.g., +9 hours = +32400000 ms)
+    // So we subtract it: UTC = localTime - offset
+    const utcTime = tempUTCDate.getTime() - offsetForDate;
+    
+    return new Date(utcTime);
   }
   
   // Fallback to default Date parsing for other formats
