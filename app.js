@@ -1507,13 +1507,15 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       // Skip excluded weekdays (check weekday in the timezone)
       let attempts = 0;
       while (attempts < 7) {
-        // Get weekday in the timezone
+        // Get weekday in the timezone using 'short' format and parse it
         const tzFormatter = new Intl.DateTimeFormat('en', {
           timeZone: timezone,
-          weekday: 'numeric'
+          weekday: 'short'
         });
-        const tzWeekday = parseInt(tzFormatter.formatToParts(meetingDate).find(p => p.type === 'weekday')?.value) || meetingDate.getUTCDay();
-        const weekdayNum = (tzWeekday + 6) % 7; // Convert to 0=Sunday format
+        const weekdayText = tzFormatter.formatToParts(meetingDate).find(p => p.type === 'weekday')?.value?.toLowerCase();
+        // Map weekday text to number (0=Sunday, 6=Saturday)
+        const weekdayMap = { 'sun': 0, 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6 };
+        const weekdayNum = weekdayMap[weekdayText?.substring(0, 3)] ?? meetingDate.getUTCDay();
         
         if (!excludedWeekdays.includes(weekdayNum)) break;
         
@@ -1530,13 +1532,14 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       for (let i = 0; i < 14; i++) {
         const candidateDate = createDateWithTimeInTimezone(testDate, hours, minutes);
         
-        // Get weekday in timezone
+        // Get weekday in timezone using 'short' format and parse it
         const tzFormatter = new Intl.DateTimeFormat('en', {
           timeZone: timezone,
-          weekday: 'numeric'
+          weekday: 'short'
         });
-        const tzWeekday = parseInt(tzFormatter.formatToParts(candidateDate).find(p => p.type === 'weekday')?.value) || candidateDate.getUTCDay();
-        const weekdayNum = (tzWeekday + 6) % 7;
+        const weekdayText = tzFormatter.formatToParts(candidateDate).find(p => p.type === 'weekday')?.value?.toLowerCase();
+        const weekdayMap = { 'sun': 0, 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6 };
+        const weekdayNum = weekdayMap[weekdayText?.substring(0, 3)] ?? candidateDate.getUTCDay();
         
         if (weekdayNum === targetWeekday && candidateDate > now) {
           meetingDate = candidateDate;
@@ -1594,10 +1597,11 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
         // Check if this matches the criteria (simplified - would need more complex logic for exact week of month)
         const tzFormatter = new Intl.DateTimeFormat('en', {
           timeZone: timezone,
-          weekday: 'numeric'
+          weekday: 'short'
         });
-        const tzWeekday = parseInt(tzFormatter.formatToParts(candidateDate).find(p => p.type === 'weekday')?.value) || candidateDate.getUTCDay();
-        const weekdayNum = (tzWeekday + 6) % 7;
+        const weekdayText = tzFormatter.formatToParts(candidateDate).find(p => p.type === 'weekday')?.value?.toLowerCase();
+        const weekdayMap = { 'sun': 0, 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6 };
+        const weekdayNum = weekdayMap[weekdayText?.substring(0, 3)] ?? candidateDate.getUTCDay();
         
         if (weekdayNum === targetWeekday && candidateDate > now) {
           meetingDate = candidateDate;
