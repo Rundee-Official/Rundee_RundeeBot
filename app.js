@@ -2173,7 +2173,10 @@ async function handleGitHubIssue(payload, guilds) {
       
       let message = '';
       if (action === 'opened') {
-        const issueBody = issue.body ? issue.body.substring(0, 200) + (issue.body.length > 200 ? '...' : '') : '';
+        const issueBodyText = issue.body ? issue.body.substring(0, 500) + (issue.body.length > 500 ? '...' : '') : '';
+        const issueBody = issueBodyText 
+          ? `\n\n**Description:**\n\`\`\`\n${issueBodyText}\n\`\`\`` 
+          : '';
         message = t('githubIssueOpened', lang, {
           repo: repository.full_name,
           issueTitle: issue.title,
