@@ -2537,9 +2537,19 @@ async function handleGitHubIssue(payload, guilds) {
  * @param {Date} date - Date to get offset for (default: now)
  * @returns {number} Offset in milliseconds
  */
+/**
+ * Get timezone offset in milliseconds for a given timezone and date
+ * @param {string} timezone - IANA timezone name (e.g., 'Asia/Seoul', 'America/New_York')
+ * @param {Date} date - Date to calculate offset for (important for DST-aware timezones)
+ * @returns {number} Offset in milliseconds (positive for UTC+, negative for UTC-)
+ * @example
+ *   getTimezoneOffset('Asia/Seoul', new Date()) // Returns 32400000 (9 hours = UTC+9)
+ *   getTimezoneOffset('America/New_York', new Date()) // Returns -18000000 or -14400000 depending on DST
+ */
 function getTimezoneOffset(timezone = 'Asia/Seoul', date = new Date()) {
   try {
     // Use Intl.DateTimeFormat to get timezone offset
+    // This method accounts for DST (Daylight Saving Time) automatically
     const formatter = new Intl.DateTimeFormat('en', {
       timeZone: timezone,
       timeZoneName: 'longOffset'
@@ -2555,11 +2565,12 @@ function getTimezoneOffset(timezone = 'Asia/Seoul', date = new Date()) {
         const sign = match[1] === '+' ? 1 : -1;
         const hours = parseInt(match[2]);
         const minutes = parseInt(match[3]);
+        // Return offset in milliseconds: positive for UTC+, negative for UTC-
         return sign * (hours * 60 + minutes) * 60 * 1000;
       }
     }
     
-    // Fallback: try simpler approach using toLocaleString
+    // Fallback: calculate offset by comparing UTC and timezone representations
     const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
     const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
     return tzDate.getTime() - utcDate.getTime();
@@ -2587,37 +2598,30 @@ function parseRelativeDate(dateStr, baseDate = new Date(), timezone = 'Asia/Seou
   const tzOffset = getTimezoneOffset(timezone, baseDate);
   
   // Try standard date format first (YYYY-MM-DD HH:mm)
-  // Parse as specified timezone explicitly
+  // This format is interpreted as local time in the specified timezone
   const standardDateFormat = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})$/;
   const standardMatch = dateStr.trim().match(standardDateFormat);
   if (standardMatch) {
     const year = parseInt(standardMatch[1]);
-    const month = parseInt(standardMatch[2]) - 1; // Month is 0-indexed
+    const month = parseInt(standardMatch[2]) - 1; // Month is 0-indexed in JavaScript Date
     const day = parseInt(standardMatch[3]);
     const hours = parseInt(standardMatch[4]);
     const minutes = parseInt(standardMatch[5]);
     
-    // Create a date string in ISO-like format: "YYYY-MM-DDTHH:mm:ss"
-    // Then create a Date object that represents this time in the specified timezone
-    // We'll use Intl to convert from the timezone to UTC
-    
     // Convert input time (in specified timezone) to UTC
     // Example: "2025-12-23 14:00" in KST (UTC+9) should become "2025-12-23 05:00" UTC
-    //
-    // Strategy: Treat input as local time in the specified timezone, convert to UTC
-    // If timezone is UTC+9, and input is 14:00, then UTC = 14:00 - 9 = 05:00
-    
-    // Get the timezone offset for this date (accounts for DST)
-    // Create a reference date at noon to avoid DST edge cases
+    // Formula: UTC = localTime - offset
+    // 
+    // Get the timezone offset for this specific date (accounts for DST)
+    // Use noon as reference time to avoid DST transition edge cases
     const referenceDate = new Date(Date.UTC(year, month, day, 12, 0, 0));
     const offsetMs = getTimezoneOffset(timezone, referenceDate);
     
-    // offsetMs represents: localTime = UTC + offsetMs
-    // So to convert localTime to UTC: UTC = localTime - offsetMs
     // Create a UTC date representing the input time
     const inputAsUTC = new Date(Date.UTC(year, month, day, hours, minutes, 0));
     
-    // Subtract the offset to get the actual UTC time
+    // Subtract the offset to convert from timezone local time to UTC
+    // offsetMs is positive for UTC+ (e.g., +32400000ms for UTC+9)
     // For Asia/Seoul (UTC+9): if input is 14:00, then UTC = 14:00 - 9 hours = 05:00
     const utcTime = inputAsUTC.getTime() - offsetMs;
     
@@ -2822,10 +2826,16 @@ function formatRepeatInfo(repeatType, lang, repeatEndDate = null, timezone = 'As
 }
 
 /**
- * Get timezone abbreviation (e.g., KST, PST, EST)
- * @param {string} timezone - Timezone (e.g., 'Asia/Seoul')
- * @param {Date} date - Date to get timezone abbreviation for
- * @returns {string} Timezone abbreviation
+ * Get timezone abbreviation (e.g., KST, PST, EST, EDT)
+ * Returns standard abbreviations instead of GMT offsets
+ * Automatically handles DST (Daylight Saving Time) for applicable timezones
+ * 
+ * @param {string} timezone - IANA timezone name (e.g., 'Asia/Seoul', 'America/New_York')
+ * @param {Date} date - Date to get abbreviation for (important for DST-aware timezones)
+ * @returns {string} Timezone abbreviation (e.g., 'KST', 'EST', 'EDT', 'PST', 'PDT')
+ * @example
+ *   getTimezoneAbbreviation('Asia/Seoul', new Date()) // Returns 'KST'
+ *   getTimezoneAbbreviation('America/New_York', new Date()) // Returns 'EST' or 'EDT' depending on DST
  */
 function getTimezoneAbbreviation(timezone = 'Asia/Seoul', date = new Date()) {
   // Direct mapping of timezone names to standard abbreviations
@@ -2894,10 +2904,15 @@ function getTimezoneAbbreviation(timezone = 'Asia/Seoul', date = new Date()) {
 }
 
 /**
- * Format date and time for display (YYYY-MM-DD HH:mm (TZ))
- * @param {Date|string} date - Date object or ISO string
- * @param {string} timezone - Timezone (e.g., 'Asia/Seoul')
- * @returns {string} Formatted date string with timezone abbreviation
+ * Format date and time for display in the specified timezone
+ * Converts UTC Date to local time in the specified timezone and formats it
+ * 
+ * @param {Date|string} date - Date object (in UTC) or ISO string
+ * @param {string} timezone - IANA timezone name (e.g., 'Asia/Seoul', 'America/New_York')
+ * @returns {string} Formatted date string in format "YYYY-MM-DD HH:mm (TZ)" where TZ is timezone abbreviation
+ * @example
+ *   formatDateTime(new Date('2025-12-23T05:00:00Z'), 'Asia/Seoul')
+ *   // Returns "2025-12-23 14:00 (KST)"
  */
 function formatDateTime(date, timezone = 'Asia/Seoul') {
   if (typeof date === 'string') date = new Date(date);
