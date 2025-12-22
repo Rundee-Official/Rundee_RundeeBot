@@ -2473,19 +2473,31 @@ function parseRelativeDate(dateStr, baseDate = new Date(), timezone = 'Asia/Seou
     // Then create a Date object that represents this time in the specified timezone
     // We'll use Intl to convert from the timezone to UTC
     
-    // Step 1: Create a date string that represents the input time
+    // Convert input time (in specified timezone) to UTC
+    // Example: "2025-12-23 14:00" in KST (UTC+9) should become "2025-12-23 05:00" UTC
+    // 
+    // We need to treat the input as local time in the specified timezone,
+    // then convert it to UTC.
+    //
+    // Method: Create a date string and use Intl API to parse it in the target timezone
     const dateStrISO = `${standardMatch[1]}-${standardMatch[2]}-${standardMatch[3]}T${standardMatch[4].padStart(2, '0')}:${standardMatch[5]}:00`;
     
-    // Step 2: Create a temporary UTC date to get the timezone offset for this specific date
-    // (offset can vary with DST)
-    const tempUTCDate = new Date(Date.UTC(year, month, day, hours, minutes, 0));
-    const offsetForDate = getTimezoneOffset(timezone, tempUTCDate);
+    // Create a date object by constructing a date string that represents the time
+    // in the target timezone, then convert it to UTC
+    // We'll use a workaround: create the date as if it's in UTC first,
+    // then adjust by the timezone offset
     
-    // Step 3: Convert from timezone to UTC
-    // If input is 14:00 in UTC+9 timezone, UTC is 14:00 - 9 = 05:00
-    // offsetForDate is positive for UTC+ (e.g., +9 hours = +32400000 ms)
-    // So we subtract it: UTC = localTime - offset
-    const utcTime = tempUTCDate.getTime() - offsetForDate;
+    // Step 1: Create a temporary date to determine the offset for this specific date
+    const tempDate = new Date(Date.UTC(year, month, day, 12, 0, 0)); // Use noon to avoid DST edge cases
+    const offsetMs = getTimezoneOffset(timezone, tempDate);
+    
+    // Step 2: Create UTC date representing the input time
+    const inputAsUTC = new Date(Date.UTC(year, month, day, hours, minutes, 0));
+    
+    // Step 3: Convert: if input is 14:00 in timezone with offset +9 hours,
+    // then UTC is 14:00 - 9 hours = 05:00
+    // offsetMs is positive for UTC+ (e.g., +32400000 for UTC+9)
+    const utcTime = inputAsUTC.getTime() - offsetMs;
     
     return new Date(utcTime);
   }
