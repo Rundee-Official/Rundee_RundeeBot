@@ -2664,9 +2664,31 @@ function formatRepeatInfo(repeatType, lang, repeatEndDate = null, timezone = 'As
 }
 
 /**
- * Format date and time for display (YYYY-MM-DD HH:mm)
+ * Get timezone abbreviation (e.g., KST, PST, EST)
+ * @param {string} timezone - Timezone (e.g., 'Asia/Seoul')
+ * @param {Date} date - Date to get timezone abbreviation for
+ * @returns {string} Timezone abbreviation
+ */
+function getTimezoneAbbreviation(timezone = 'Asia/Seoul', date = new Date()) {
+  try {
+    const formatter = new Intl.DateTimeFormat('en', {
+      timeZone: timezone,
+      timeZoneName: 'short'
+    });
+    const parts = formatter.formatToParts(date);
+    const tzName = parts.find(p => p.type === 'timeZoneName')?.value;
+    return tzName || timezone.split('/').pop()?.substring(0, 3).toUpperCase() || timezone;
+  } catch (error) {
+    console.error(`Error getting timezone abbreviation for ${timezone}:`, error);
+    return timezone.split('/').pop()?.substring(0, 3).toUpperCase() || timezone;
+  }
+}
+
+/**
+ * Format date and time for display (YYYY-MM-DD HH:mm (TZ))
  * @param {Date|string} date - Date object or ISO string
- * @returns {string} Formatted date string
+ * @param {string} timezone - Timezone (e.g., 'Asia/Seoul')
+ * @returns {string} Formatted date string with timezone abbreviation
  */
 function formatDateTime(date, timezone = 'Asia/Seoul') {
   if (typeof date === 'string') date = new Date(date);
@@ -2690,7 +2712,9 @@ function formatDateTime(date, timezone = 'Asia/Seoul') {
     const hours = parts.find(p => p.type === 'hour')?.value;
     const minutes = parts.find(p => p.type === 'minute')?.value;
     
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    const tzAbbr = getTimezoneAbbreviation(timezone, date);
+    
+    return `${year}-${month}-${day} ${hours}:${minutes} (${tzAbbr})`;
   } catch (error) {
     console.error(`Error formatting date with timezone ${timezone}:`, error);
     // Fallback to UTC
@@ -2699,7 +2723,7 @@ function formatDateTime(date, timezone = 'Asia/Seoul') {
     const day = String(date.getUTCDate()).padStart(2, '0');
     const hours = String(date.getUTCHours()).padStart(2, '0');
     const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    return `${year}-${month}-${day} ${hours}:${minutes} (UTC)`;
   }
 }
 
