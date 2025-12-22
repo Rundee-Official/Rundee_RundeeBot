@@ -265,8 +265,7 @@ async function handleListMeetings(guildId, res) {
     .map(m => {
       const participants = JSON.parse(m.participants);
       const repeatInfo = m.repeatType ? formatRepeatInfo(m.repeatType, lang, m.repeatEndDate) : '';
-      const repeatLabel = lang === 'ko' ? '반복' : 'Repeat';
-      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${formatParticipants(participants)}${repeatInfo ? `\n${repeatLabel}:${repeatInfo}` : ''}`;
+      return `**ID: ${m.id}** - ${m.title}\n${dateLabel}: ${formatDateTime(new Date(m.date))}\n${participantsLabel}: ${formatParticipants(participants)}${repeatInfo}`;
     })
     .join('\n\n');
 
