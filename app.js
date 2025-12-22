@@ -2246,6 +2246,23 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
   const str = dateStr.trim().toLowerCase();
   
   // Try standard date format first (YYYY-MM-DD HH:mm)
+  // Parse as KST (UTC+9) timezone explicitly
+  const standardDateFormat = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})$/;
+  const standardMatch = dateStr.trim().match(standardDateFormat);
+  if (standardMatch) {
+    const year = parseInt(standardMatch[1]);
+    const month = parseInt(standardMatch[2]) - 1; // Month is 0-indexed
+    const day = parseInt(standardMatch[3]);
+    const hours = parseInt(standardMatch[4]);
+    const minutes = parseInt(standardMatch[5]);
+    
+    // Create date in KST (UTC+9) - subtract 9 hours to convert to UTC
+    // This ensures the time is interpreted as KST
+    const kstDate = new Date(Date.UTC(year, month, day, hours - 9, minutes));
+    return kstDate;
+  }
+  
+  // Fallback to default Date parsing for other formats
   const standardDate = new Date(dateStr);
   if (!isNaN(standardDate.getTime())) {
     return standardDate;
@@ -2278,15 +2295,32 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
     { regex: /(오전|am)\s*(\d{1,2})\s*:?\s*(\d{0,2})?/i, isAM: true },
   ];
   
+  // Get current time in KST (UTC+9)
+  const nowKST = new Date();
+  const kstOffset = 9 * 60 * 60 * 1000; // KST offset in milliseconds
+  const nowKSTTime = new Date(nowKST.getTime() + kstOffset);
+  const baseDateKST = baseDate ? new Date(baseDate.getTime() + kstOffset) : nowKSTTime;
+  
   for (const pattern of patterns) {
     const match = str.match(pattern.regex);
     if (match) {
+      // Start with current time in UTC (will convert KST input to UTC)
       const date = new Date(baseDate);
       
       if (pattern.isToday || pattern.isTomorrow) {
+        // Get KST date components
+        const baseKSTYear = baseDateKST.getUTCFullYear();
+        const baseKSTMonth = baseDateKST.getUTCMonth();
+        const baseKSTDate = baseDateKST.getUTCDate();
+        
         if (pattern.isTomorrow) {
-          date.setDate(date.getDate() + 1);
+          const tomorrowKST = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate + 1));
+          date.setTime(tomorrowKST.getTime() - kstOffset);
+        } else {
+          const todayKST = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate));
+          date.setTime(todayKST.getTime() - kstOffset);
         }
+        
         const hour = parseInt(match[2]);
         const minute = parseInt(match[3] || '0');
         const period = match[4]?.toLowerCase();
@@ -2301,8 +2335,13 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
           finalHour = hour;
         }
         
-        date.setHours(finalHour, minute, 0, 0);
-        return date;
+        // Set KST time (subtract offset to get UTC)
+        const kstTime = new Date(date.getTime() + kstOffset);
+        const kstYear = kstTime.getUTCFullYear();
+        const kstMonth = kstTime.getUTCMonth();
+        const kstDay = kstTime.getUTCDate();
+        const utcDate = new Date(Date.UTC(kstYear, kstMonth, kstDay, finalHour - 9, minute));
+        return utcDate;
       }
       
       if (pattern.isPM || pattern.isAM) {
@@ -2316,16 +2355,29 @@ function parseRelativeDate(dateStr, baseDate = new Date()) {
           finalHour = 0;
         }
         
-        date.setHours(finalHour, minute, 0, 0);
-        // If the time has passed today, set for tomorrow
-        if (date < baseDate) {
-          date.setDate(date.getDate() + 1);
+        // Get KST date components
+        const baseKSTYear = baseDateKST.getUTCFullYear();
+        const baseKSTMonth = baseDateKST.getUTCMonth();
+        const baseKSTDate = baseDateKST.getUTCDate();
+        const baseKSTHours = baseDateKST.getUTCHours();
+        const baseKSTMinutes = baseDateKST.getUTCMinutes();
+        
+        // Create KST time
+        let kstDate = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate, finalHour, minute));
+        
+        // If the time has passed today in KST, set for tomorrow
+        if (finalHour < baseKSTHours || (finalHour === baseKSTHours && minute <= baseKSTMinutes)) {
+          kstDate = new Date(Date.UTC(baseKSTYear, baseKSTMonth, baseKSTDate + 1, finalHour, minute));
         }
-        return date;
+        
+        // Convert KST to UTC (subtract 9 hours)
+        return new Date(kstDate.getTime() - kstOffset);
       }
       
       const value = pattern.value !== undefined ? pattern.value : parseInt(match[1]);
       
+      // For relative times (hours, minutes, days), add to current UTC time
+      // This preserves the relative nature while working with UTC internally
       if (pattern.unit === 'hours') {
         date.setHours(date.getHours() + value);
       } else if (pattern.unit === 'minutes') {
@@ -2413,11 +2465,14 @@ function formatRepeatInfo(repeatType, lang, repeatEndDate = null) {
  */
 function formatDateTime(date) {
   if (typeof date === 'string') date = new Date(date);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
+  // Convert UTC date to KST (UTC+9) for display
+  const kstOffset = 9 * 60; // KST is UTC+9 (in minutes)
+  const kstTime = new Date(date.getTime() + kstOffset * 60 * 1000);
+  const year = kstTime.getUTCFullYear();
+  const month = String(kstTime.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(kstTime.getUTCDate()).padStart(2, '0');
+  const hours = String(kstTime.getUTCHours()).padStart(2, '0');
+  const minutes = String(kstTime.getUTCMinutes()).padStart(2, '0');
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
