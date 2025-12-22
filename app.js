@@ -1966,44 +1966,97 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
   const settings = guildSettingsQueries.get.get(guildId);
   const timezone = settings?.timezone || 'Asia/Seoul';
 
-  const minute = reminderTime.getMinutes();
-  const hour = reminderTime.getHours();
-  const day = reminderTime.getDate();
-  const month = reminderTime.getMonth() + 1;
-  const year = reminderTime.getFullYear();
+  // Get time components in the specified timezone (not server local time)
+  try {
+    const formatter = new Intl.DateTimeFormat('en', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(reminderTime);
+    const year = parseInt(parts.find(p => p.type === 'year')?.value || '0');
+    const month = parseInt(parts.find(p => p.type === 'month')?.value || '0');
+    const day = parseInt(parts.find(p => p.type === 'day')?.value || '0');
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
 
-  const cronExpression = `${minute} ${hour} ${day} ${month} *`;
+    const cronExpression = `${minute} ${hour} ${day} ${month} *`;
 
-  cron.schedule(cronExpression, async () => {
-    try {
-      const meeting = meetingQueries.getById.get(meetingId);
-      if (!meeting) return;
+    cron.schedule(cronExpression, async () => {
+      try {
+        const meeting = meetingQueries.getById.get(meetingId);
+        if (!meeting) return;
 
-      const reminded = JSON.parse(meeting.reminded || '[]');
-      if (reminded.includes(reminderMinutes)) return;
+        const reminded = JSON.parse(meeting.reminded || '[]');
+        if (reminded.includes(reminderMinutes)) return;
 
-      const reminderSettings = guildSettingsQueries.get.get(guildId);
-      const lang = getGuildLanguage(reminderSettings);
-      const reminderTimezone = reminderSettings?.timezone || 'Asia/Seoul';
-      const mentions = formatParticipantsMentions(participants);
-      const message = t('meetingReminder', lang, {
-        mentions,
-        title,
-        date: formatDateTime(date, reminderTimezone),
-        minutes: reminderMinutes,
-      });
+        const reminderSettings = guildSettingsQueries.get.get(guildId);
+        const lang = getGuildLanguage(reminderSettings);
+        const reminderTimezone = reminderSettings?.timezone || 'Asia/Seoul';
+        const mentions = formatParticipantsMentions(participants);
+        const message = t('meetingReminder', lang, {
+          mentions,
+          title,
+          date: formatDateTime(date, reminderTimezone),
+          minutes: reminderMinutes,
+        });
 
-      await sendMessage(channelId, message);
-      
-      reminded.push(reminderMinutes);
-      meetingQueries.updateReminded.run(JSON.stringify(reminded), meetingId);
-    } catch (error) {
-      console.error('Error sending meeting reminder:', error);
-    }
-  }, {
-    scheduled: true,
-    timezone: timezone,
-  });
+        await sendMessage(channelId, message);
+        
+        reminded.push(reminderMinutes);
+        meetingQueries.updateReminded.run(JSON.stringify(reminded), meetingId);
+      } catch (error) {
+        console.error('Error sending meeting reminder:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: timezone,
+    });
+  } catch (error) {
+    console.error(`Error scheduling reminder for meeting ${meetingId} in timezone ${timezone}:`, error);
+    // Fallback to UTC-based scheduling if timezone conversion fails
+    const minute = reminderTime.getUTCMinutes();
+    const hour = reminderTime.getUTCHours();
+    const day = reminderTime.getUTCDate();
+    const month = reminderTime.getUTCMonth() + 1;
+    const cronExpression = `${minute} ${hour} ${day} ${month} *`;
+
+    cron.schedule(cronExpression, async () => {
+      try {
+        const meeting = meetingQueries.getById.get(meetingId);
+        if (!meeting) return;
+
+        const reminded = JSON.parse(meeting.reminded || '[]');
+        if (reminded.includes(reminderMinutes)) return;
+
+        const reminderSettings = guildSettingsQueries.get.get(guildId);
+        const lang = getGuildLanguage(reminderSettings);
+        const reminderTimezone = reminderSettings?.timezone || 'Asia/Seoul';
+        const mentions = formatParticipantsMentions(participants);
+        const message = t('meetingReminder', lang, {
+          mentions,
+          title,
+          date: formatDateTime(date, reminderTimezone),
+          minutes: reminderMinutes,
+        });
+
+        await sendMessage(channelId, message);
+        
+        reminded.push(reminderMinutes);
+        meetingQueries.updateReminded.run(JSON.stringify(reminded), meetingId);
+      } catch (error) {
+        console.error('Error sending meeting reminder:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: 'UTC',
+    });
+  }
 }
 
 /**
