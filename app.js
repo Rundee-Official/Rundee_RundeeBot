@@ -18,7 +18,7 @@ import {
   verifyKeyMiddleware,
 } from 'discord-interactions';
 import { DiscordRequest } from './utils.js';
-import db, { meetingQueries, guildSettingsQueries } from './database.js';
+import db, { meetingQueries, guildSettingsQueries, getNextMeetingId } from './database.js';
 import { t, getGuildLanguage } from './messages.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -988,8 +988,10 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       });
     }
 
-    // Insert into database
+    // Insert into database - reuse deleted IDs if available
+    const nextId = getNextMeetingId();
     const result = meetingQueries.insert.run(
+      nextId,
       guildId,
       title,
       meetingDate.toISOString(),
@@ -1001,7 +1003,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
       repeatEndDate ? repeatEndDate.toISOString() : null
     );
 
-    const meetingId = result.lastInsertRowid;
+    const meetingId = nextId;
     
     // Check for conflicts AFTER insertion (excluding the newly created meeting)
     const conflictWarning = checkMeetingConflict(guildId, meetingDate, meetingId, timezone);
@@ -1201,9 +1203,13 @@ async function handleMessageComponent(body, res) {
       });
     }
     
-    // Restore meeting
+    // Restore meeting - reuse the original ID if available, otherwise get next available
     try {
+      const restoreId = deletedMeeting.id && !meetingQueries.getById.get(deletedMeeting.id)
+        ? deletedMeeting.id
+        : getNextMeetingId();
       meetingQueries.insert.run(
+        restoreId,
         deletedMeeting.guild_id,
         deletedMeeting.title,
         deletedMeeting.date,
@@ -1527,8 +1533,10 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       });
     }
 
-    // Insert into database
+    // Insert into database - reuse deleted IDs if available
+    const nextId = getNextMeetingId();
     const result = meetingQueries.insert.run(
+      nextId,
       guildId,
       title,
       meetingDate.toISOString(),
@@ -1540,7 +1548,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
       repeatEndDate ? repeatEndDate.toISOString() : null
     );
 
-    const meetingId = result.lastInsertRowid;
+    const meetingId = nextId;
 
     // Schedule reminders
     const reminderTimes = reminderMinutesArray.map(minutes => {
@@ -2155,9 +2163,11 @@ async function handleRecurringMeeting(meetingRow) {
     }
   }
 
-  // Create next meeting
+  // Create next meeting - reuse deleted IDs if available
   const reminderMinutes = JSON.parse(dbMeeting.reminderMinutes);
+  const nextId = getNextMeetingId();
   const result = meetingQueries.insert.run(
+    nextId,
     dbMeeting.guildId,
     dbMeeting.title,
     nextDate.toISOString(),
@@ -2169,7 +2179,7 @@ async function handleRecurringMeeting(meetingRow) {
     dbMeeting.repeatEndDate
   );
 
-  const nextMeetingId = result.lastInsertRowid;
+  const nextMeetingId = nextId;
   const participants = JSON.parse(dbMeeting.participants);
 
   // Schedule reminders for next meeting

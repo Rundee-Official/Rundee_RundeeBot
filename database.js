@@ -31,7 +31,7 @@ try {
 try {
   db.exec(`
   CREATE TABLE IF NOT EXISTS meetings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     guild_id TEXT NOT NULL,
     title TEXT NOT NULL,
     date TEXT NOT NULL,
@@ -84,7 +84,26 @@ export const dbRun = db.prepare.bind(db);
 
 // Meeting operations
 export const meetingQueries = {
+  // Get the smallest available ID (for ID reuse)
+  // Finds the first gap in the ID sequence, starting from 1
+  getMinAvailableId: db.prepare(`
+    WITH RECURSIVE seq(n) AS (
+      SELECT 1
+      UNION ALL
+      SELECT n + 1 FROM seq WHERE n < (SELECT COALESCE(MAX(id), 0) + 1 FROM meetings)
+    )
+    SELECT MIN(seq.n) AS min_id
+    FROM seq
+    WHERE NOT EXISTS (SELECT 1 FROM meetings WHERE meetings.id = seq.n)
+  `),
+  
+  
   insert: db.prepare(`
+    INSERT INTO meetings (id, guild_id, title, date, participants, channel_id, reminder_minutes, repeat_type, repeat_interval, repeat_end_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  
+  insertWithoutId: db.prepare(`
     INSERT INTO meetings (guild_id, title, date, participants, channel_id, reminder_minutes, repeat_type, repeat_interval, repeat_end_date)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
@@ -168,6 +187,12 @@ export const guildSettingsQueries = {
     ON CONFLICT(guild_id) DO UPDATE SET timezone = excluded.timezone, updated_at = CURRENT_TIMESTAMP
   `),
 };
+
+// Helper function to get next available ID (reuses deleted IDs)
+export function getNextMeetingId() {
+  const result = meetingQueries.getMinAvailableId.get();
+  return result ? result.min_id : 1;
+}
 
 export default db;
 
