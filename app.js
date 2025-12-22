@@ -2475,28 +2475,22 @@ function parseRelativeDate(dateStr, baseDate = new Date(), timezone = 'Asia/Seou
     
     // Convert input time (in specified timezone) to UTC
     // Example: "2025-12-23 14:00" in KST (UTC+9) should become "2025-12-23 05:00" UTC
-    // 
-    // We need to treat the input as local time in the specified timezone,
-    // then convert it to UTC.
     //
-    // Method: Create a date string and use Intl API to parse it in the target timezone
-    const dateStrISO = `${standardMatch[1]}-${standardMatch[2]}-${standardMatch[3]}T${standardMatch[4].padStart(2, '0')}:${standardMatch[5]}:00`;
+    // Strategy: Treat input as local time in the specified timezone, convert to UTC
+    // If timezone is UTC+9, and input is 14:00, then UTC = 14:00 - 9 = 05:00
     
-    // Create a date object by constructing a date string that represents the time
-    // in the target timezone, then convert it to UTC
-    // We'll use a workaround: create the date as if it's in UTC first,
-    // then adjust by the timezone offset
+    // Get the timezone offset for this date (accounts for DST)
+    // Create a reference date at noon to avoid DST edge cases
+    const referenceDate = new Date(Date.UTC(year, month, day, 12, 0, 0));
+    const offsetMs = getTimezoneOffset(timezone, referenceDate);
     
-    // Step 1: Create a temporary date to determine the offset for this specific date
-    const tempDate = new Date(Date.UTC(year, month, day, 12, 0, 0)); // Use noon to avoid DST edge cases
-    const offsetMs = getTimezoneOffset(timezone, tempDate);
-    
-    // Step 2: Create UTC date representing the input time
+    // offsetMs represents: localTime = UTC + offsetMs
+    // So to convert localTime to UTC: UTC = localTime - offsetMs
+    // Create a UTC date representing the input time
     const inputAsUTC = new Date(Date.UTC(year, month, day, hours, minutes, 0));
     
-    // Step 3: Convert: if input is 14:00 in timezone with offset +9 hours,
-    // then UTC is 14:00 - 9 hours = 05:00
-    // offsetMs is positive for UTC+ (e.g., +32400000 for UTC+9)
+    // Subtract the offset to get the actual UTC time
+    // For Asia/Seoul (UTC+9): if input is 14:00, then UTC = 14:00 - 9 hours = 05:00
     const utcTime = inputAsUTC.getTime() - offsetMs;
     
     return new Date(utcTime);
