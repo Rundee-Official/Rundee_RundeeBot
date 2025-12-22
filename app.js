@@ -101,32 +101,61 @@ app.post('/interactions',
       }
 
       if (type === InteractionType.APPLICATION_COMMAND) {
-        const { name } = data;
+        const { name, options } = data;
 
         try {
-          if (name === 'list-meetings') {
-            return await handleListMeetings(guildId, res);
-          } else if (name === 'delete-meeting') {
-            return await handleDeleteMeeting(data, res, body);
-          } else if (name === 'edit-meeting') {
-            return await handleEditMeeting(data, res);
-          } else if (name === 'set-meeting-channel') {
-            return await handleSetMeetingChannel(data, guildId, channelId, res);
-          } else if (name === 'set-github-channel') {
-            return await handleSetGithubChannel(data, guildId, channelId, res);
-          } else if (name === 'setup-github') {
-            return await handleSetupGitHub(data, guildId, channelId, res);
-          } else if (name === 'set-meeting-time') {
-            return await handleSetMeetingTime(data, guildId, channelId, res);
-          } else if (name === 'set-recurring-meeting') {
-            return await handleSetRecurringMeeting(data, guildId, channelId, res);
-          } else if (name === 'set-language') {
-            return await handleSetLanguage(data, guildId, res);
-          } else if (name === 'channel-status') {
-            return await handleChannelStatus(guildId, res);
+          // Handle subcommands
+          if (options && options.length > 0 && options[0].type === 1) {
+            // SUB_COMMAND type (1)
+            const subcommand = options[0].name;
+            const subcommandOptions = options[0].options || [];
+
+            // Meeting command group
+            if (name === 'meeting') {
+              if (subcommand === 'list') {
+                return await handleListMeetings(guildId, res);
+              } else if (subcommand === 'create') {
+                // Convert subcommand options to match old format
+                const convertedData = { options: subcommandOptions };
+                return await handleSetMeetingTime(convertedData, guildId, channelId, res);
+              } else if (subcommand === 'create-recurring') {
+                const convertedData = { options: subcommandOptions };
+                return await handleSetRecurringMeeting(convertedData, guildId, channelId, res);
+              } else if (subcommand === 'edit') {
+                const convertedData = { options: subcommandOptions };
+                return await handleEditMeeting(convertedData, res);
+              } else if (subcommand === 'delete') {
+                const convertedData = { options: subcommandOptions };
+                return await handleDeleteMeeting(convertedData, res, body);
+              } else if (subcommand === 'channel') {
+                const convertedData = { options: subcommandOptions };
+                return await handleSetMeetingChannel(convertedData, guildId, channelId, res);
+              }
+            }
+            // GitHub command group
+            else if (name === 'github') {
+              if (subcommand === 'setup') {
+                const convertedData = { options: subcommandOptions };
+                return await handleSetupGitHub(convertedData, guildId, channelId, res);
+              } else if (subcommand === 'channel') {
+                const convertedData = { options: subcommandOptions };
+                return await handleSetGithubChannel(convertedData, guildId, channelId, res);
+              } else if (subcommand === 'status') {
+                return await handleChannelStatus(guildId, res);
+              }
+            }
+            // Config command group
+            else if (name === 'config') {
+              if (subcommand === 'language') {
+                const convertedData = { options: subcommandOptions };
+                return await handleSetLanguage(convertedData, guildId, res);
+              } else if (subcommand === 'status') {
+                return await handleChannelStatus(guildId, res);
+              }
+            }
           }
 
-          console.error(`unknown command: ${name}`);
+          console.error(`unknown command: ${name}${options?.[0]?.name ? ` ${options[0].name}` : ''}`);
           return res.status(400).json({ error: 'unknown command' });
         } catch (error) {
           console.error('Error handling command:', error);
