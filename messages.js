@@ -60,7 +60,7 @@ export const messages = {
     meetingReminder: 'Meeting Reminder\n\n{mentions}\n\n**{title}**\n**Date:** {date}\n\nMeeting starts in {minutes} minute(s)!',
     
     // GitHub notifications
-    githubPush: 'GitHub Push Event\n\n**Repository:** {repo}\n**Branch:** {branch}\n**Author:** {author}\n**Commits:** {commitsCount}\n\n**Commit History:**\n{commitMessages}{moreCommits}\n\n[View]({compareUrl})',
+    githubPush: 'GitHub Push Event\n\n**Repository:** {repo}\n**Branch:** {branch}\n**Author:** {author}\n**Commits:** {commitsCount}\n\n**Commit History:**\n{commitMessages}\n\n[View]({compareUrl})',
     githubPROpened: 'GitHub Pull Request Opened\n\n**Repository:** {repo}\n**PR Title:** {prTitle}\n**Author:** {author}\n**Base:** {baseRef} <- **Head:** {headRef}\n\n[View PR]({prUrl})',
     githubPRMerged: 'GitHub Pull Request Merged\n\n**Repository:** {repo}\n**PR Title:** {prTitle}\n**Author:** {author}\n**Merged By:** {merger}\n**Base Branch:** {baseRef}\n**Merged Branch:** {headRef}\n\n[View PR]({prUrl})',
     githubPRClosed: 'GitHub Pull Request Closed\n\n**Repository:** {repo}\n**PR Title:** {prTitle}\n**Author:** {author}\n\n[View PR]({prUrl})',
@@ -144,11 +144,11 @@ export const messages = {
     meetingReminder: '회의 알림\n\n{mentions}\n\n**{title}**\n**일시:** {date}\n\n{minutes}분 후 회의가 시작됩니다!',
     
     // GitHub notifications
-    githubPush: 'GitHub Push 이벤트\n\n**저장소:** {repo}\n**브랜치:** {branch}\n**작성자:** {author}\n**커밋 수:** {commitsCount}\n\n**커밋 내역:**\n{commitMessages}{moreCommits}\n\n[보기]({compareUrl})',
+    githubPush: 'GitHub Push 이벤트\n\n**저장소:** {repo}\n**브랜치:** {branch}\n**작성자:** {author}\n**커밋 수:** {commitsCount}\n\n**커밋 내역:**\n{commitMessages}\n\n[보기]({compareUrl})',
     githubPROpened: 'GitHub Pull Request 열림\n\n**저장소:** {repo}\n**PR 제목:** {prTitle}\n**작성자:** {author}\n**베이스:** {baseRef} <- **헤드:** {headRef}\n\n[PR 보기]({prUrl})',
     githubPRMerged: 'GitHub Pull Request 머지됨\n\n**저장소:** {repo}\n**PR 제목:** {prTitle}\n**작성자:** {author}\n**머지한 사람:** {merger}\n**베이스 브랜치:** {baseRef}\n**머지 브랜치:** {headRef}\n\n[PR 보기]({prUrl})',
     githubPRClosed: 'GitHub Pull Request 닫힘\n\n**저장소:** {repo}\n**PR 제목:** {prTitle}\n**작성자:** {author}\n\n[PR 보기]({prUrl})',
-    githubIssueOpened: 'GitHub Issue 열림\n\n**저장소:** {repo}\n**제목:** {issueTitle}\n**작성자:** {author}\n**라벨:** {labels}\n\n{issueBody}\n\n[이슈 보기]({issueUrl})',
+    githubIssueOpened: 'GitHub Issue 열림\n\n**저장소:** {repo}\n**제목:** {issueTitle}\n**작성자:** {author}\n**라벨:** {labels}{issueBody}\n\n[이슈 보기]({issueUrl})',
     githubIssueClosed: 'GitHub Issue 닫힘\n\n**저장소:** {repo}\n**제목:** {issueTitle}\n**작성자:** {author}\n**닫은 사람:** {closer}\n\n[이슈 보기]({issueUrl})',
     
     // Recurring meeting details

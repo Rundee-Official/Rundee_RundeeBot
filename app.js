@@ -2071,8 +2071,16 @@ async function handleGitHubPush(payload, guilds) {
       const settings = guildSettingsQueries.get.get(guild.guild_id);
       const lang = getGuildLanguage(settings);
       
-      const commitMessages = commits.slice(0, 5).map(c => `  • ${c.message.split('\n')[0]} (${c.author.name})`).join('\n');
-      const moreCommits = commits.length > 5 ? `\n  ... and ${commits.length - 5} more commits` : '';
+      // Format commit messages in code block (show all commits, but limit individual message length)
+      const commitMessagesText = commits.map(c => {
+        const msg = c.message.split('\n')[0];
+        const truncatedMsg = msg.length > 100 ? msg.substring(0, 97) + '...' : msg;
+        return `${c.id.substring(0, 7)} ${truncatedMsg} (${c.author.name})`;
+      }).join('\n');
+      
+      const commitMessages = commitMessagesText 
+        ? `\`\`\`\n${commitMessagesText}\n\`\`\`` 
+        : lang === 'ko' ? '(커밋 없음)' : '(No commits)';
       
       const message = t('githubPush', lang, {
         repo: repository.full_name,
@@ -2080,7 +2088,6 @@ async function handleGitHubPush(payload, guilds) {
         author: pusher.name,
         commitsCount: commits.length,
         commitMessages: commitMessages,
-        moreCommits: moreCommits,
         compareUrl: payload.compare,
       });
 
