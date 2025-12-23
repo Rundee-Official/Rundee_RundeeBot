@@ -2,7 +2,7 @@
  * @file database.js
  * @brief Database operations for Rundee Bot using SQLite
  * @author Rundee
- * @date 2025-01-22
+ * @date 2025-12-23
  * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 

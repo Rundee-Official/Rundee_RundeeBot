@@ -2,7 +2,7 @@
  * @file utils.js
  * @brief Utility functions for Discord API requests
  * @author Rundee
- * @date 2025-01-22
+ * @date 2025-12-23
  * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 

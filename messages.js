@@ -2,7 +2,7 @@
  * @file messages.js
  * @brief Localized messages for Rundee Bot (Korean and English)
  * @author Rundee
- * @date 2025-01-22
+ * @date 2025-12-23
  * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 

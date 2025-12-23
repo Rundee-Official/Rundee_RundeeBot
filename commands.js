@@ -2,7 +2,7 @@
  * @file commands.js
  * @brief Discord slash command definitions for Rundee Bot
  * @author Rundee
- * @date 2025-01-22
+ * @date 2025-12-23
  * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 

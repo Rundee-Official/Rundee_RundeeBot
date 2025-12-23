@@ -2,7 +2,7 @@
  * @file app.js
  * @brief Main application file for Rundee Bot - Discord bot for meeting reminders and GitHub integration
  * @author Rundee
- * @date 2025-01-22
+ * @date 2025-12-23
  * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 
