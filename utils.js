@@ -1,7 +1,9 @@
 /**
- * @fileoverview Utility functions for Discord API requests
- * @copyright Rundee 2024
- * @license MIT
+ * @file utils.js
+ * @brief Utility functions for Discord API requests
+ * @author Rundee
+ * @date 2025-01-22
+ * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 
 import 'dotenv/config';

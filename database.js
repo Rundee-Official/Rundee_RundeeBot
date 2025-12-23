@@ -1,7 +1,9 @@
 /**
- * @fileoverview Database operations for Rundee Bot using SQLite
- * @copyright Rundee 2024
- * @license MIT
+ * @file database.js
+ * @brief Database operations for Rundee Bot using SQLite
+ * @author Rundee
+ * @date 2025-01-22
+ * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 
 import Database from 'better-sqlite3';

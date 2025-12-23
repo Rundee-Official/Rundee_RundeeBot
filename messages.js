@@ -1,7 +1,9 @@
 /**
- * @fileoverview Localized messages for Rundee Bot
- * @copyright Rundee 2024
- * @license MIT
+ * @file messages.js
+ * @brief Localized messages for Rundee Bot (Korean and English)
+ * @author Rundee
+ * @date 2025-01-22
+ * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 
 // Localized messages

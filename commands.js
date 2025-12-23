@@ -1,7 +1,9 @@
 /**
- * @fileoverview Discord slash command definitions for Rundee Bot
- * @copyright Rundee 2024
- * @license MIT
+ * @file commands.js
+ * @brief Discord slash command definitions for Rundee Bot
+ * @author Rundee
+ * @date 2025-01-22
+ * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 
 import 'dotenv/config';

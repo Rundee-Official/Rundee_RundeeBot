@@ -1,7 +1,9 @@
 /**
- * @fileoverview Rundee Bot - Discord bot for meeting reminders and GitHub integration
- * @copyright Rundee 2024
- * @license MIT
+ * @file app.js
+ * @brief Main application file for Rundee Bot - Discord bot for meeting reminders and GitHub integration
+ * @author Rundee
+ * @date 2025-01-22
+ * @copyright Copyright (c) 2025 Rundee. All rights reserved.
  */
 
 import 'dotenv/config';
