@@ -3068,9 +3068,7 @@ async function handleGitHubDeployment(payload, guilds) {
       const lang = getGuildLanguage(settings);
       
       const description = deployment.description || '';
-      const descriptionFormatted = description 
-        ? `\`\`\`\n${description}\n\`\`\`` 
-        : '';
+      const descriptionFormatted = description || '';
       
       const message = t('githubDeployment', lang, {
         repo: repository.full_name,
