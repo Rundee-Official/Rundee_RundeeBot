@@ -248,6 +248,10 @@ app.post('/webhook/github', async (req, res) => {
 
     if (event === 'push') {
       await handleGitHubPush(payload, relevantGuilds);
+    } else if (event === 'create') {
+      await handleGitHubCreate(payload, relevantGuilds);
+    } else if (event === 'delete') {
+      await handleGitHubDelete(payload, relevantGuilds);
     } else if (event === 'pull_request') {
       await handleGitHubPullRequest(payload, relevantGuilds);
     } else if (event === 'issues') {
@@ -2401,12 +2405,35 @@ async function sendMessage(channelId, content) {
  * @param {Object} payload - GitHub webhook payload
  * @param {Array} guilds - Array of guild settings that should receive notifications
  */
+/**
+ * Handle GitHub push event and send notifications to configured guilds
+ * Distinguishes between regular push, revert, branch creation/deletion
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
 async function handleGitHubPush(payload, guilds) {
   const repository = payload.repository;
   const pusher = payload.pusher;
   const commits = payload.commits || [];
   const ref = payload.ref;
-  const branch = ref.replace('refs/heads/', '');
+  const isTag = ref.startsWith('refs/tags/');
+  const branchOrTag = isTag ? ref.replace('refs/tags/', '') : ref.replace('refs/heads/', '');
+  
+  // Check if this is a branch/tag creation or deletion
+  if (payload.created) {
+    // Branch/tag created - this will be handled by 'create' event, but handle here too for safety
+    return; // Let create event handle it
+  }
+  if (payload.deleted) {
+    // Branch/tag deleted - this will be handled by 'delete' event, but handle here too for safety
+    return; // Let delete event handle it
+  }
+
+  // Check if this is a revert (commits contain "Revert" in message)
+  const isRevert = commits.some(c => {
+    const msg = c.message.toLowerCase();
+    return msg.includes('revert') || msg.startsWith('revert ');
+  });
 
   for (const guild of guilds) {
     if (!guild.github_channel_id) continue;
@@ -2426,9 +2453,11 @@ async function handleGitHubPush(payload, guilds) {
         ? `\`\`\`\n${commitMessagesText}\n\`\`\`` 
         : lang === 'ko' ? '(커밋 없음)' : '(No commits)';
       
-      const message = t('githubPush', lang, {
+      // Use different message for revert vs regular push
+      const messageKey = isRevert ? 'githubRevert' : 'githubPush';
+      const message = t(messageKey, lang, {
         repo: repository.full_name,
-        branch: branch,
+        branch: branchOrTag,
         author: pusher.name,
         commitsCount: commits.length,
         commitMessages: commitMessages,
@@ -2438,6 +2467,100 @@ async function handleGitHubPush(payload, guilds) {
       await sendMessage(guild.github_channel_id, message);
     } catch (error) {
       console.error(`Error sending GitHub push notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub create event (branch/tag creation)
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubCreate(payload, guilds) {
+  const repository = payload.repository;
+  const refType = payload.ref_type; // 'branch' or 'tag'
+  const refName = payload.ref;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      let message = '';
+      if (refType === 'branch') {
+        const branchUrl = `${repository.html_url}/tree/${refName}`;
+        message = t('githubBranchCreated', lang, {
+          repo: repository.full_name,
+          branch: refName,
+          author: sender.login,
+          url: branchUrl,
+        });
+      } else if (refType === 'tag') {
+        const tagUrl = `${repository.html_url}/releases/tag/${refName}`;
+        message = t('githubTagCreated', lang, {
+          repo: repository.full_name,
+          tag: refName,
+          author: sender.login,
+          url: tagUrl,
+        });
+      } else {
+        // Unknown ref type, skip
+        continue;
+      }
+
+      if (message) {
+        await sendMessage(guild.github_channel_id, message);
+      }
+    } catch (error) {
+      console.error(`Error sending GitHub create notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub delete event (branch/tag deletion)
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubDelete(payload, guilds) {
+  const repository = payload.repository;
+  const refType = payload.ref_type; // 'branch' or 'tag'
+  const refName = payload.ref;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      let message = '';
+      if (refType === 'branch') {
+        message = t('githubBranchDeleted', lang, {
+          repo: repository.full_name,
+          branch: refName,
+          author: sender.login,
+        });
+      } else if (refType === 'tag') {
+        message = t('githubTagDeleted', lang, {
+          repo: repository.full_name,
+          tag: refName,
+          author: sender.login,
+        });
+      } else {
+        // Unknown ref type, skip
+        continue;
+      }
+
+      if (message) {
+        await sendMessage(guild.github_channel_id, message);
+      }
+    } catch (error) {
+      console.error(`Error sending GitHub delete notification to guild ${guild.guild_id}:`, error);
     }
   }
 }

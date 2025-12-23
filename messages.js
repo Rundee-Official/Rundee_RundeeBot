@@ -65,6 +65,11 @@ export const messages = {
     
     // GitHub notifications
     githubPush: 'GitHub Push Event\n\n**Repository:** {repo}\n**Branch:** {branch}\n**Author:** {author}\n**Commits:** {commitsCount}\n\n**Commit History:**\n{commitMessages}\n\n[View]({compareUrl})',
+    githubBranchCreated: 'New Branch Created\n\n**Repository:** {repo}\n**Branch:** {branch}\n**Created By:** {author}\n\n[View Branch]({url})',
+    githubBranchDeleted: 'Branch Deleted\n\n**Repository:** {repo}\n**Branch:** {branch}\n**Deleted By:** {author}',
+    githubTagCreated: 'New Tag Created\n\n**Repository:** {repo}\n**Tag:** {tag}\n**Created By:** {author}\n\n[View Tag]({url})',
+    githubTagDeleted: 'Tag Deleted\n\n**Repository:** {repo}\n**Tag:** {tag}\n**Deleted By:** {author}',
+    githubRevert: 'Revert Push Event\n\n**Repository:** {repo}\n**Branch:** {branch}\n**Author:** {author}\n**Commits:** {commitsCount}\n\n**Commit History:**\n{commitMessages}\n\n[View]({compareUrl})',
     githubPROpened: 'GitHub Pull Request Opened\n\n**Repository:** {repo}\n**PR Title:** {prTitle}\n**Author:** {author}\n**Base:** {baseRef} <- **Head:** {headRef}\n\n[View PR]({prUrl})',
     githubPRMerged: 'GitHub Pull Request Merged\n\n**Repository:** {repo}\n**PR Title:** {prTitle}\n**Author:** {author}\n**Merged By:** {merger}\n**Base Branch:** {baseRef}\n**Merged Branch:** {headRef}\n\n[View PR]({prUrl})',
     githubPRClosed: 'GitHub Pull Request Closed\n\n**Repository:** {repo}\n**PR Title:** {prTitle}\n**Author:** {author}\n\n[View PR]({prUrl})',
@@ -153,6 +158,11 @@ export const messages = {
     
     // GitHub notifications
     githubPush: 'GitHub Push 이벤트\n\n**저장소:** {repo}\n**브랜치:** {branch}\n**작성자:** {author}\n**커밋 수:** {commitsCount}\n\n**커밋 내역:**\n{commitMessages}\n\n[보기]({compareUrl})',
+    githubBranchCreated: '새 브랜치 생성\n\n**저장소:** {repo}\n**브랜치:** {branch}\n**생성자:** {author}\n\n[브랜치 보기]({url})',
+    githubBranchDeleted: '브랜치 삭제\n\n**저장소:** {repo}\n**브랜치:** {branch}\n**삭제자:** {author}',
+    githubTagCreated: '새 태그 생성\n\n**저장소:** {repo}\n**태그:** {tag}\n**생성자:** {author}\n\n[태그 보기]({url})',
+    githubTagDeleted: '태그 삭제\n\n**저장소:** {repo}\n**태그:** {tag}\n**삭제자:** {author}',
+    githubRevert: 'Revert Push 이벤트\n\n**저장소:** {repo}\n**브랜치:** {branch}\n**작성자:** {author}\n**커밋 수:** {commitsCount}\n\n**커밋 내역:**\n{commitMessages}\n\n[보기]({compareUrl})',
     githubPROpened: 'GitHub Pull Request 열림\n\n**저장소:** {repo}\n**PR 제목:** {prTitle}\n**작성자:** {author}\n**베이스:** {baseRef} <- **헤드:** {headRef}\n\n[PR 보기]({prUrl})',
     githubPRMerged: 'GitHub Pull Request 머지됨\n\n**저장소:** {repo}\n**PR 제목:** {prTitle}\n**작성자:** {author}\n**머지한 사람:** {merger}\n**베이스 브랜치:** {baseRef}\n**머지 브랜치:** {headRef}\n\n[PR 보기]({prUrl})',
     githubPRClosed: 'GitHub Pull Request 닫힘\n\n**저장소:** {repo}\n**PR 제목:** {prTitle}\n**작성자:** {author}\n\n[PR 보기]({prUrl})',
