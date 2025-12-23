@@ -256,6 +256,30 @@ app.post('/webhook/github', async (req, res) => {
       await handleGitHubPullRequest(payload, relevantGuilds);
     } else if (event === 'issues') {
       await handleGitHubIssue(payload, relevantGuilds);
+    } else if (event === 'issue_comment') {
+      await handleGitHubIssueComment(payload, relevantGuilds);
+    } else if (event === 'commit_comment') {
+      await handleGitHubCommitComment(payload, relevantGuilds);
+    } else if (event === 'release') {
+      await handleGitHubRelease(payload, relevantGuilds);
+    } else if (event === 'fork') {
+      await handleGitHubFork(payload, relevantGuilds);
+    } else if (event === 'watch') {
+      await handleGitHubWatch(payload, relevantGuilds);
+    } else if (event === 'star') {
+      await handleGitHubStar(payload, relevantGuilds);
+    } else if (event === 'deployment') {
+      await handleGitHubDeployment(payload, relevantGuilds);
+    } else if (event === 'deployment_status') {
+      await handleGitHubDeploymentStatus(payload, relevantGuilds);
+    } else if (event === 'gollum') {
+      await handleGitHubGollum(payload, relevantGuilds);
+    } else if (event === 'member') {
+      await handleGitHubMember(payload, relevantGuilds);
+    } else if (event === 'public') {
+      await handleGitHubPublic(payload, relevantGuilds);
+    } else if (event === 'repository') {
+      await handleGitHubRepository(payload, relevantGuilds);
     }
 
     res.status(200).send('OK');
