@@ -61,6 +61,7 @@ export const messages = {
     // Reminders
     allRemindersPassed: 'All reminder times have passed.',
     meetingReminder: 'Meeting Reminder\n\n{mentions}\n\n**{title}**\n**Date:** {date}\n\nMeeting starts in {minutes} minute(s)!',
+    meetingStart: 'Meeting Starting Now\n\n{mentions}\n\n**{title}**\n**Date:** {date}\n\nThe meeting is starting now!',
     
     // GitHub notifications
     githubPush: 'GitHub Push Event\n\n**Repository:** {repo}\n**Branch:** {branch}\n**Author:** {author}\n**Commits:** {commitsCount}\n\n**Commit History:**\n{commitMessages}\n\n[View]({compareUrl})',
@@ -148,6 +149,7 @@ export const messages = {
     // Reminders
     allRemindersPassed: '알림 시간이 모두 지났습니다.',
     meetingReminder: '회의 알림\n\n{mentions}\n\n**{title}**\n**일시:** {date}\n\n{minutes}분 후 회의가 시작됩니다!',
+    meetingStart: '회의 시작\n\n{mentions}\n\n**{title}**\n**일시:** {date}\n\n지금 회의가 시작됩니다!',
     
     // GitHub notifications
     githubPush: 'GitHub Push 이벤트\n\n**저장소:** {repo}\n**브랜치:** {branch}\n**작성자:** {author}\n**커밋 수:** {commitsCount}\n\n**커밋 내역:**\n{commitMessages}\n\n[보기]({compareUrl})',

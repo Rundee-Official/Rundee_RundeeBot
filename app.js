@@ -475,7 +475,7 @@ async function handleEditMeeting(data, res) {
     reminderMinutes = reminderMinutesOption.value
       .split(',')
       .map(m => parseInt(m.trim()))
-      .filter(m => !isNaN(m) && m > 0)
+      .filter(m => !isNaN(m) && m >= 0)
       .sort((a, b) => b - a);
   }
 
@@ -960,7 +960,7 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     const reminderMinutesArray = reminderMinutesStr
       .split(',')
       .map(m => parseInt(m.trim()))
-      .filter(m => !isNaN(m) && m > 0)
+      .filter(m => !isNaN(m) && m >= 0)
       .sort((a, b) => b - a);
 
     if (reminderMinutesArray.length === 0) {
@@ -1011,7 +1011,9 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
     // Schedule reminders
     const reminderTimes = reminderMinutesArray.map(minutes => {
       const reminderTime = new Date(meetingDate.getTime() - minutes * 60 * 1000);
-      if (reminderTime > new Date()) {
+      // For 0 minutes (meeting start), check if meeting date is in the future
+      // For other reminders, check if reminder time is in the future
+      if ((minutes === 0 && meetingDate > new Date()) || (minutes > 0 && reminderTime > new Date())) {
         scheduleMeetingReminder(meetingId, guildId, title, meetingDate, participants, meetingChannelId, minutes);
         return { minutes, time: reminderTime };
       }
@@ -1020,7 +1022,12 @@ async function handleSetMeetingTime(data, guildId, channelId, res) {
 
     const reminderTimesText = reminderTimes.length > 0
       ? reminderTimes.map(rt => {
-          const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
+          let minutesText;
+          if (rt.minutes === 0) {
+            minutesText = lang === 'ko' ? '시작' : 'start';
+          } else {
+            minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
+          }
           return `${formatDateTime(rt.time, timezone)} (${minutesText})`;
         }).join('\n')
       : t('allRemindersPassed', lang);
@@ -1429,7 +1436,7 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
     const reminderMinutesArray = reminderMinutesStr
       .split(',')
       .map(m => parseInt(m.trim()))
-      .filter(m => !isNaN(m) && m > 0)
+      .filter(m => !isNaN(m) && m >= 0)
       .sort((a, b) => b - a);
 
     if (reminderMinutesArray.length === 0) {
@@ -1681,7 +1688,9 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
     // Schedule reminders
     const reminderTimes = reminderMinutesArray.map(minutes => {
       const reminderTime = new Date(meetingDate.getTime() - minutes * 60 * 1000);
-      if (reminderTime > new Date()) {
+      // For 0 minutes (meeting start), check if meeting date is in the future
+      // For other reminders, check if reminder time is in the future
+      if ((minutes === 0 && meetingDate > new Date()) || (minutes > 0 && reminderTime > new Date())) {
         scheduleMeetingReminder(meetingId, guildId, title, meetingDate, participants, meetingChannelId, minutes);
         return { minutes, time: reminderTime };
       }
@@ -1690,7 +1699,12 @@ async function handleSetRecurringMeeting(data, guildId, channelId, res) {
 
     const reminderTimesText = reminderTimes.length > 0
       ? reminderTimes.map(rt => {
-          const minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
+          let minutesText;
+          if (rt.minutes === 0) {
+            minutesText = lang === 'ko' ? '시작' : 'start';
+          } else {
+            minutesText = lang === 'ko' ? `${rt.minutes}분 전` : `${rt.minutes} min before`;
+          }
           return `${formatDateTime(rt.time, timezone)} (${minutesText})`;
         }).join('\n')
       : t('allRemindersPassed', lang);
@@ -2094,8 +2108,11 @@ function getRepeatInterval(repeatType) {
  * @param {number} reminderMinutes - Minutes before meeting to send reminder
  */
 function scheduleMeetingReminder(meetingId, guildId, title, date, participants, channelId, reminderMinutes) {
-  const reminderTime = new Date(date.getTime() - reminderMinutes * 60 * 1000);
+  // For meeting start notification (0 minutes), reminderTime equals meeting date
+  // For other reminders, reminderTime is before meeting date
+  const reminderTime = reminderMinutes === 0 ? date : new Date(date.getTime() - reminderMinutes * 60 * 1000);
   
+  // Check if reminder time is in the future (or equal to now for 0 minutes)
   if (reminderTime <= new Date()) return;
 
   // Get timezone from guild settings
@@ -2135,12 +2152,12 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
         const lang = getGuildLanguage(reminderSettings);
         const reminderTimezone = reminderSettings?.timezone || 'Asia/Seoul';
         const mentions = formatParticipantsMentions(participants);
-        const message = t('meetingReminder', lang, {
-          mentions,
-          title,
-          date: formatDateTime(date, reminderTimezone),
-          minutes: reminderMinutes,
-        });
+        // Use different message for meeting start (0 minutes) vs reminders
+        const messageKey = reminderMinutes === 0 ? 'meetingStart' : 'meetingReminder';
+        const messageParams = reminderMinutes === 0
+          ? { mentions, title, date: formatDateTime(date, reminderTimezone) }
+          : { mentions, title, date: formatDateTime(date, reminderTimezone), minutes: reminderMinutes };
+        const message = t(messageKey, lang, messageParams);
 
         await sendMessage(channelId, message);
         
@@ -2174,12 +2191,12 @@ function scheduleMeetingReminder(meetingId, guildId, title, date, participants, 
         const lang = getGuildLanguage(reminderSettings);
         const reminderTimezone = reminderSettings?.timezone || 'Asia/Seoul';
         const mentions = formatParticipantsMentions(participants);
-        const message = t('meetingReminder', lang, {
-          mentions,
-          title,
-          date: formatDateTime(date, reminderTimezone),
-          minutes: reminderMinutes,
-        });
+        // Use different message for meeting start (0 minutes) vs reminders
+        const messageKey = reminderMinutes === 0 ? 'meetingStart' : 'meetingReminder';
+        const messageParams = reminderMinutes === 0
+          ? { mentions, title, date: formatDateTime(date, reminderTimezone) }
+          : { mentions, title, date: formatDateTime(date, reminderTimezone), minutes: reminderMinutes };
+        const message = t(messageKey, lang, messageParams);
 
         await sendMessage(channelId, message);
         
@@ -2986,7 +3003,10 @@ cron.schedule('* * * * *', async () => {
       for (const reminderMinutesValue of reminderMinutes) {
         if (reminded.includes(reminderMinutesValue)) continue;
 
-        const reminderTime = new Date(meetingDate.getTime() - reminderMinutesValue * 60 * 1000);
+        // For meeting start (0 minutes), reminderTime equals meeting date
+        const reminderTime = reminderMinutesValue === 0 
+          ? meetingDate 
+          : new Date(meetingDate.getTime() - reminderMinutesValue * 60 * 1000);
         
         if (reminderTime >= now && reminderTime <= oneMinuteLater) {
           try {
@@ -2995,12 +3015,12 @@ cron.schedule('* * * * *', async () => {
             const timezone = settings?.timezone || 'Asia/Seoul';
             const participants = JSON.parse(meeting.participants);
             const mentions = formatParticipantsMentions(participants);
-            const message = t('meetingReminder', lang, {
-              mentions,
-              title: meeting.title,
-              date: formatDateTime(meetingDate, timezone),
-              minutes: reminderMinutesValue,
-            });
+            // Use different message for meeting start (0 minutes) vs reminders
+            const messageKey = reminderMinutesValue === 0 ? 'meetingStart' : 'meetingReminder';
+            const messageParams = reminderMinutesValue === 0
+              ? { mentions, title: meeting.title, date: formatDateTime(meetingDate, timezone) }
+              : { mentions, title: meeting.title, date: formatDateTime(meetingDate, timezone), minutes: reminderMinutesValue };
+            const message = t(messageKey, lang, messageParams);
 
             await sendMessage(meeting.channelId, message);
             
