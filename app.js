@@ -2803,6 +2803,493 @@ async function handleGitHubIssue(payload, guilds) {
 }
 
 /**
+ * Handle GitHub issue comment event (comments on issues/PRs)
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubIssueComment(payload, guilds) {
+  const repository = payload.repository;
+  const comment = payload.comment;
+  const issue = payload.issue;
+  const sender = payload.sender;
+  const isPR = issue.pull_request !== undefined;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      const commentText = comment.body ? comment.body.substring(0, 500) + (comment.body.length > 500 ? '...' : '') : '';
+      const commentFormatted = commentText 
+        ? `\`\`\`\n${commentText}\n\`\`\`` 
+        : '';
+      
+      const type = isPR ? (lang === 'ko' ? 'Pull Request' : 'Pull Request') : (lang === 'ko' ? 'Issue' : 'Issue');
+      const typeLabel = isPR ? (lang === 'ko' ? 'PR' : 'PR') : (lang === 'ko' ? 'Issue' : 'Issue');
+      
+      const message = t('githubIssueComment', lang, {
+        type: type,
+        typeLabel: typeLabel,
+        repo: repository.full_name,
+        number: issue.number,
+        title: issue.title,
+        author: sender.login,
+        comment: commentFormatted || (lang === 'ko' ? '(댓글 없음)' : '(No comment)'),
+        commentUrl: comment.html_url,
+      });
+
+      await sendMessage(guild.github_channel_id, message);
+    } catch (error) {
+      console.error(`Error sending GitHub issue comment notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub commit comment event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubCommitComment(payload, guilds) {
+  const repository = payload.repository;
+  const comment = payload.comment;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      const commentText = comment.body ? comment.body.substring(0, 500) + (comment.body.length > 500 ? '...' : '') : '';
+      const commentFormatted = commentText 
+        ? `\`\`\`\n${commentText}\n\`\`\`` 
+        : '';
+      
+      const message = t('githubCommitComment', lang, {
+        repo: repository.full_name,
+        commitId: comment.commit_id.substring(0, 7),
+        author: sender.login,
+        comment: commentFormatted || (lang === 'ko' ? '(댓글 없음)' : '(No comment)'),
+        commentUrl: comment.html_url,
+      });
+
+      await sendMessage(guild.github_channel_id, message);
+    } catch (error) {
+      console.error(`Error sending GitHub commit comment notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub release event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubRelease(payload, guilds) {
+  const repository = payload.repository;
+  const release = payload.release;
+  const action = payload.action;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      let message = '';
+      const description = release.body ? release.body.substring(0, 300) + (release.body.length > 300 ? '...' : '') : '';
+      const descriptionFormatted = description 
+        ? `\`\`\`\n${description}\n\`\`\`` 
+        : '';
+      
+      if (action === 'published') {
+        message = t('githubReleasePublished', lang, {
+          repo: repository.full_name,
+          tagName: release.tag_name,
+          name: release.name || release.tag_name,
+          author: sender.login,
+          description: descriptionFormatted || '',
+          releaseUrl: release.html_url,
+        });
+      } else if (action === 'edited') {
+        message = t('githubReleaseEdited', lang, {
+          repo: repository.full_name,
+          tagName: release.tag_name,
+          name: release.name || release.tag_name,
+          author: sender.login,
+          releaseUrl: release.html_url,
+        });
+      } else if (action === 'deleted') {
+        message = t('githubReleaseDeleted', lang, {
+          repo: repository.full_name,
+          tagName: release.tag_name,
+          author: sender.login,
+        });
+      } else if (action === 'prereleased') {
+        message = t('githubReleasePrereleased', lang, {
+          repo: repository.full_name,
+          tagName: release.tag_name,
+          name: release.name || release.tag_name,
+          author: sender.login,
+          description: descriptionFormatted || '',
+          releaseUrl: release.html_url,
+        });
+      } else if (action === 'released') {
+        message = t('githubReleaseReleased', lang, {
+          repo: repository.full_name,
+          tagName: release.tag_name,
+          name: release.name || release.tag_name,
+          author: sender.login,
+          releaseUrl: release.html_url,
+        });
+      }
+
+      if (message) {
+        await sendMessage(guild.github_channel_id, message);
+      }
+    } catch (error) {
+      console.error(`Error sending GitHub release notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub fork event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubFork(payload, guilds) {
+  const repository = payload.repository;
+  const forkee = payload.forkee;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      const message = t('githubFork', lang, {
+        repo: repository.full_name,
+        author: sender.login,
+        forkUrl: forkee.html_url,
+      });
+
+      await sendMessage(guild.github_channel_id, message);
+    } catch (error) {
+      console.error(`Error sending GitHub fork notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub watch event (starred)
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubWatch(payload, guilds) {
+  const repository = payload.repository;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      const message = t('githubWatch', lang, {
+        repo: repository.full_name,
+        author: sender.login,
+      });
+
+      await sendMessage(guild.github_channel_id, message);
+    } catch (error) {
+      console.error(`Error sending GitHub watch notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub star event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubStar(payload, guilds) {
+  const repository = payload.repository;
+  const sender = payload.sender;
+  const action = payload.action;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      let message = '';
+      if (action === 'created') {
+        message = t('githubStarCreated', lang, {
+          repo: repository.full_name,
+          author: sender.login,
+          stars: repository.stargazers_count || 0,
+        });
+      } else if (action === 'deleted') {
+        message = t('githubStarDeleted', lang, {
+          repo: repository.full_name,
+          author: sender.login,
+          stars: repository.stargazers_count || 0,
+        });
+      }
+
+      if (message) {
+        await sendMessage(guild.github_channel_id, message);
+      }
+    } catch (error) {
+      console.error(`Error sending GitHub star notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub deployment event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubDeployment(payload, guilds) {
+  const repository = payload.repository;
+  const deployment = payload.deployment;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      const description = deployment.description || '';
+      const descriptionFormatted = description 
+        ? `\`\`\`\n${description}\n\`\`\`` 
+        : '';
+      
+      const message = t('githubDeployment', lang, {
+        repo: repository.full_name,
+        environment: deployment.environment || 'production',
+        ref: deployment.ref,
+        author: sender.login,
+        description: descriptionFormatted,
+        deploymentUrl: deployment.url || repository.html_url,
+      });
+
+      await sendMessage(guild.github_channel_id, message);
+    } catch (error) {
+      console.error(`Error sending GitHub deployment notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub deployment_status event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubDeploymentStatus(payload, guilds) {
+  const repository = payload.repository;
+  const deployment = payload.deployment;
+  const deploymentStatus = payload.deployment_status;
+  const state = deploymentStatus.state;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      let messageKey = '';
+      if (state === 'success') {
+        messageKey = 'githubDeploymentStatusSuccess';
+      } else if (state === 'failure' || state === 'error') {
+        messageKey = 'githubDeploymentStatusFailure';
+      } else if (state === 'pending' || state === 'in_progress' || state === 'queued') {
+        messageKey = 'githubDeploymentStatusPending';
+      }
+      
+      if (messageKey) {
+        const message = t(messageKey, lang, {
+          repo: repository.full_name,
+          environment: deployment.environment || 'production',
+          ref: deployment.ref,
+          state: state,
+          deploymentUrl: deploymentStatus.target_url || deployment.url || repository.html_url,
+        });
+
+        await sendMessage(guild.github_channel_id, message);
+      }
+    } catch (error) {
+      console.error(`Error sending GitHub deployment status notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub gollum event (wiki updates)
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubGollum(payload, guilds) {
+  const repository = payload.repository;
+  const pages = payload.pages || [];
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      const pagesText = pages.map(p => `${p.action}: ${p.title}`).join(', ');
+      
+      const message = t('githubGollum', lang, {
+        repo: repository.full_name,
+        pages: pagesText || (lang === 'ko' ? '없음' : 'None'),
+        author: sender.login,
+      });
+
+      await sendMessage(guild.github_channel_id, message);
+    } catch (error) {
+      console.error(`Error sending GitHub gollum notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub member event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubMember(payload, guilds) {
+  const repository = payload.repository;
+  const member = payload.member;
+  const action = payload.action;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      let message = '';
+      if (action === 'added') {
+        message = t('githubMemberAdded', lang, {
+          repo: repository.full_name,
+          member: member.login,
+          author: sender.login,
+        });
+      } else if (action === 'removed') {
+        message = t('githubMemberRemoved', lang, {
+          repo: repository.full_name,
+          member: member.login,
+          author: sender.login,
+        });
+      }
+
+      if (message) {
+        await sendMessage(guild.github_channel_id, message);
+      }
+    } catch (error) {
+      console.error(`Error sending GitHub member notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub public event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubPublic(payload, guilds) {
+  const repository = payload.repository;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      const message = t('githubPublic', lang, {
+        repo: repository.full_name,
+      });
+
+      await sendMessage(guild.github_channel_id, message);
+    } catch (error) {
+      console.error(`Error sending GitHub public notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
+ * Handle GitHub repository event
+ * @param {Object} payload - GitHub webhook payload
+ * @param {Array} guilds - Array of guild settings that should receive notifications
+ */
+async function handleGitHubRepository(payload, guilds) {
+  const repository = payload.repository;
+  const action = payload.action;
+  const sender = payload.sender;
+
+  for (const guild of guilds) {
+    if (!guild.github_channel_id) continue;
+
+    try {
+      const settings = guildSettingsQueries.get.get(guild.guild_id);
+      const lang = getGuildLanguage(settings);
+      
+      let message = '';
+      if (action === 'created') {
+        message = t('githubRepositoryCreated', lang, {
+          repo: repository.full_name,
+          author: sender.login,
+        });
+      } else if (action === 'deleted') {
+        message = t('githubRepositoryDeleted', lang, {
+          repo: repository.full_name,
+          author: sender.login,
+        });
+      } else if (action === 'archived') {
+        message = t('githubRepositoryArchived', lang, {
+          repo: repository.full_name,
+          author: sender.login,
+        });
+      } else if (action === 'unarchived') {
+        message = t('githubRepositoryUnarchived', lang, {
+          repo: repository.full_name,
+          author: sender.login,
+        });
+      }
+
+      if (message) {
+        await sendMessage(guild.github_channel_id, message);
+      }
+    } catch (error) {
+      console.error(`Error sending GitHub repository notification to guild ${guild.guild_id}:`, error);
+    }
+  }
+}
+
+/**
  * Get timezone offset in milliseconds for a given timezone and date
  * @param {string} timezone - IANA timezone name (e.g., 'Asia/Seoul', 'America/New_York')
  * @param {Date} date - Date to calculate offset for (important for DST-aware timezones)
