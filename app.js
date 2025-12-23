@@ -2583,32 +2583,92 @@ async function handleGitHubPullRequest(payload, guilds) {
       const lang = getGuildLanguage(settings);
       
       let message = '';
+      const prNumber = pullRequest.number;
+      const prTitle = pullRequest.title;
+      const author = pullRequest.user.login;
+      const baseRef = pullRequest.base.ref;
+      const headRef = pullRequest.head.ref;
+      const prUrl = pullRequest.html_url;
+      
       if (action === 'opened') {
         message = t('githubPROpened', lang, {
           repo: repository.full_name,
-          prTitle: pullRequest.title,
-          author: pullRequest.user.login,
-          baseRef: pullRequest.base.ref,
-          headRef: pullRequest.head.ref,
-          prUrl: pullRequest.html_url,
+          number: prNumber,
+          prTitle: prTitle,
+          author: author,
+          baseRef: baseRef,
+          headRef: headRef,
+          prUrl: prUrl,
         });
       } else if (action === 'closed' && pullRequest.merged) {
         const merger = pullRequest.merged_by;
         message = t('githubPRMerged', lang, {
           repo: repository.full_name,
-          prTitle: pullRequest.title,
-          author: pullRequest.user.login,
-          merger: merger.login,
-          baseRef: pullRequest.base.ref,
-          headRef: pullRequest.head.ref,
-          prUrl: pullRequest.html_url,
+          number: prNumber,
+          prTitle: prTitle,
+          author: author,
+          merger: merger?.login || 'Unknown',
+          baseRef: baseRef,
+          headRef: headRef,
+          prUrl: prUrl,
         });
       } else if (action === 'closed') {
         message = t('githubPRClosed', lang, {
           repo: repository.full_name,
-          prTitle: pullRequest.title,
-          author: pullRequest.user.login,
-          prUrl: pullRequest.html_url,
+          number: prNumber,
+          prTitle: prTitle,
+          author: author,
+          prUrl: prUrl,
+        });
+      } else if (action === 'reopened') {
+        message = t('githubPRReopened', lang, {
+          repo: repository.full_name,
+          number: prNumber,
+          prTitle: prTitle,
+          author: author,
+          baseRef: baseRef,
+          headRef: headRef,
+          prUrl: prUrl,
+        });
+      } else if (action === 'synchronize') {
+        message = t('githubPRUpdated', lang, {
+          repo: repository.full_name,
+          number: prNumber,
+          prTitle: prTitle,
+          author: author,
+          baseRef: baseRef,
+          headRef: headRef,
+          prUrl: prUrl,
+        });
+      } else if (action === 'assigned') {
+        const assignee = payload.assignee?.login || 'Unknown';
+        message = t('githubPRAssigned', lang, {
+          repo: repository.full_name,
+          number: prNumber,
+          prTitle: prTitle,
+          assignee: assignee,
+          author: author,
+          prUrl: prUrl,
+        });
+      } else if (action === 'review_requested') {
+        const reviewer = payload.requested_reviewer?.login || payload.requested_team?.name || 'Unknown';
+        message = t('githubPRReviewRequested', lang, {
+          repo: repository.full_name,
+          number: prNumber,
+          prTitle: prTitle,
+          reviewer: reviewer,
+          author: author,
+          prUrl: prUrl,
+        });
+      } else if (action === 'ready_for_review') {
+        message = t('githubPRReadyForReview', lang, {
+          repo: repository.full_name,
+          number: prNumber,
+          prTitle: prTitle,
+          author: author,
+          baseRef: baseRef,
+          headRef: headRef,
+          prUrl: prUrl,
         });
       }
 
@@ -2639,6 +2699,12 @@ async function handleGitHubIssue(payload, guilds) {
       const lang = getGuildLanguage(settings);
       
       let message = '';
+      const issueNumber = issue.number;
+      const issueTitle = issue.title;
+      const author = issue.user.login;
+      const issueUrl = issue.html_url;
+      const labels = issue.labels.map(l => l.name).join(', ') || (lang === 'ko' ? '없음' : 'None');
+      
       if (action === 'opened') {
         const issueBodyText = issue.body ? issue.body.substring(0, 500) + (issue.body.length > 500 ? '...' : '') : '';
         const issueBody = issueBodyText 
@@ -2646,19 +2712,60 @@ async function handleGitHubIssue(payload, guilds) {
           : '';
         message = t('githubIssueOpened', lang, {
           repo: repository.full_name,
-          issueTitle: issue.title,
-          author: issue.user.login,
-          labels: issue.labels.map(l => l.name).join(', ') || 'None',
+          number: issueNumber,
+          issueTitle: issueTitle,
+          author: author,
+          labels: labels,
           issueBody: issueBody,
-          issueUrl: issue.html_url,
+          issueUrl: issueUrl,
         });
       } else if (action === 'closed') {
         message = t('githubIssueClosed', lang, {
           repo: repository.full_name,
-          issueTitle: issue.title,
-          author: issue.user.login,
+          number: issueNumber,
+          issueTitle: issueTitle,
+          author: author,
           closer: issue.closed_by?.login || 'Unknown',
-          issueUrl: issue.html_url,
+          issueUrl: issueUrl,
+        });
+      } else if (action === 'reopened') {
+        message = t('githubIssueReopened', lang, {
+          repo: repository.full_name,
+          number: issueNumber,
+          issueTitle: issueTitle,
+          author: author,
+          labels: labels,
+          issueUrl: issueUrl,
+        });
+      } else if (action === 'assigned') {
+        const assignee = payload.assignee?.login || 'Unknown';
+        message = t('githubIssueAssigned', lang, {
+          repo: repository.full_name,
+          number: issueNumber,
+          issueTitle: issueTitle,
+          assignee: assignee,
+          author: author,
+          issueUrl: issueUrl,
+        });
+      } else if (action === 'labeled') {
+        const label = payload.label?.name || 'Unknown';
+        message = t('githubIssueLabeled', lang, {
+          repo: repository.full_name,
+          number: issueNumber,
+          issueTitle: issueTitle,
+          label: label,
+          author: author,
+          issueUrl: issueUrl,
+        });
+      } else if (action === 'unlabeled') {
+        const label = payload.label?.name || 'Unknown';
+        message = t('githubIssueUnlabeled', lang, {
+          repo: repository.full_name,
+          number: issueNumber,
+          issueTitle: issueTitle,
+          label: label,
+          author: author,
+          issueUrl: issueUrl,
         });
       }
 
