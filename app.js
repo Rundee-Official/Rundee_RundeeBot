@@ -2459,12 +2459,57 @@ async function handleGitHubPush(payload, guilds) {
     return msg.includes('revert') || msg.startsWith('revert ');
   });
 
+  // Check if this is a merge commit (merge commits typically have "Merge" in message and merge from another branch)
+  const isMerge = commits.some(c => {
+    const msg = c.message.toLowerCase();
+    // Check if commit message contains "Merge branch" or "Merge pull request" (but not PR merge which is handled separately)
+    return (msg.includes('merge branch') || msg.startsWith('merge branch')) && !msg.includes('pull request');
+  });
+
+  // Extract merge information if this is a merge
+  let mergeInfo = null;
+  if (isMerge && commits.length > 0) {
+    const mergeCommit = commits.find(c => {
+      const msg = c.message.toLowerCase();
+      return (msg.includes('merge branch') || msg.startsWith('merge branch')) && !msg.includes('pull request');
+    });
+    
+    if (mergeCommit) {
+      // Try to extract source branch from merge commit message
+      // Format: "Merge branch 'source-branch' into target-branch" or "Merge branch 'source-branch'"
+      const msg = mergeCommit.message;
+      const branchMatch = msg.match(/merge branch ['"]([^'"]+)['"]/i);
+      const sourceBranch = branchMatch ? branchMatch[1] : 'unknown';
+      mergeInfo = {
+        sourceBranch: sourceBranch,
+        targetBranch: branchOrTag,
+        commitId: mergeCommit.id.substring(0, 7),
+        commitUrl: mergeCommit.url,
+        author: mergeCommit.author.name,
+      };
+    }
+  }
+
   for (const guild of guilds) {
     if (!guild.github_channel_id) continue;
 
     try {
       const settings = guildSettingsQueries.get.get(guild.guild_id);
       const lang = getGuildLanguage(settings);
+      
+      // If this is a merge commit (not PR merge), send merge notification
+      if (isMerge && mergeInfo) {
+        const message = t('githubMerge', lang, {
+          repo: repository.full_name,
+          targetBranch: mergeInfo.targetBranch,
+          sourceBranch: mergeInfo.sourceBranch,
+          author: mergeInfo.author,
+          commitId: mergeInfo.commitId,
+          commitUrl: mergeInfo.commitUrl,
+        });
+        await sendMessage(guild.github_channel_id, message);
+        continue; // Skip regular push notification for merge commits
+      }
       
       // Format commit messages (without code block - will be wrapped in outer code block)
       const commitMessagesText = commits.map(c => {
