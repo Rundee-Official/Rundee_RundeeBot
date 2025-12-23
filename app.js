@@ -2466,16 +2466,14 @@ async function handleGitHubPush(payload, guilds) {
       const settings = guildSettingsQueries.get.get(guild.guild_id);
       const lang = getGuildLanguage(settings);
       
-      // Format commit messages in code block (show all commits, but limit individual message length)
+      // Format commit messages (without code block - will be wrapped in outer code block)
       const commitMessagesText = commits.map(c => {
         const msg = c.message.split('\n')[0];
         const truncatedMsg = msg.length > 100 ? msg.substring(0, 97) + '...' : msg;
         return `${c.id.substring(0, 7)} ${truncatedMsg} (${c.author.name})`;
       }).join('\n');
       
-      const commitMessages = commitMessagesText 
-        ? `\`\`\`\n${commitMessagesText}\n\`\`\`` 
-        : lang === 'ko' ? '(커밋 없음)' : '(No commits)';
+      const commitMessages = commitMessagesText || (lang === 'ko' ? '(커밋 없음)' : '(No commits)');
       
       // Use different message for revert vs regular push
       const messageKey = isRevert ? 'githubRevert' : 'githubPush';
@@ -2732,7 +2730,7 @@ async function handleGitHubIssue(payload, guilds) {
       if (action === 'opened') {
         const issueBodyText = issue.body ? issue.body.substring(0, 500) + (issue.body.length > 500 ? '...' : '') : '';
         const issueBody = issueBodyText 
-          ? `\n\n**Description:**\n\`\`\`\n${issueBodyText}\n\`\`\`` 
+          ? `\n\n설명:\n${issueBodyText}` 
           : '';
         message = t('githubIssueOpened', lang, {
           repo: repository.full_name,
@@ -2822,9 +2820,7 @@ async function handleGitHubIssueComment(payload, guilds) {
       const lang = getGuildLanguage(settings);
       
       const commentText = comment.body ? comment.body.substring(0, 500) + (comment.body.length > 500 ? '...' : '') : '';
-      const commentFormatted = commentText 
-        ? `\`\`\`\n${commentText}\n\`\`\`` 
-        : '';
+      const commentFormatted = commentText || (lang === 'ko' ? '(댓글 없음)' : '(No comment)');
       
       const type = isPR ? (lang === 'ko' ? 'Pull Request' : 'Pull Request') : (lang === 'ko' ? 'Issue' : 'Issue');
       const typeLabel = isPR ? (lang === 'ko' ? 'PR' : 'PR') : (lang === 'ko' ? 'Issue' : 'Issue');
@@ -2836,7 +2832,7 @@ async function handleGitHubIssueComment(payload, guilds) {
         number: issue.number,
         title: issue.title,
         author: sender.login,
-        comment: commentFormatted || (lang === 'ko' ? '(댓글 없음)' : '(No comment)'),
+        comment: commentFormatted,
         commentUrl: comment.html_url,
       });
 
@@ -2865,15 +2861,13 @@ async function handleGitHubCommitComment(payload, guilds) {
       const lang = getGuildLanguage(settings);
       
       const commentText = comment.body ? comment.body.substring(0, 500) + (comment.body.length > 500 ? '...' : '') : '';
-      const commentFormatted = commentText 
-        ? `\`\`\`\n${commentText}\n\`\`\`` 
-        : '';
+      const commentFormatted = commentText || (lang === 'ko' ? '(댓글 없음)' : '(No comment)');
       
       const message = t('githubCommitComment', lang, {
         repo: repository.full_name,
         commitId: comment.commit_id.substring(0, 7),
         author: sender.login,
-        comment: commentFormatted || (lang === 'ko' ? '(댓글 없음)' : '(No comment)'),
+        comment: commentFormatted,
         commentUrl: comment.html_url,
       });
 
@@ -2904,9 +2898,7 @@ async function handleGitHubRelease(payload, guilds) {
       
       let message = '';
       const description = release.body ? release.body.substring(0, 300) + (release.body.length > 300 ? '...' : '') : '';
-      const descriptionFormatted = description 
-        ? `\`\`\`\n${description}\n\`\`\`` 
-        : '';
+      const descriptionFormatted = description || '';
       
       if (action === 'published') {
         message = t('githubReleasePublished', lang, {
@@ -2914,7 +2906,7 @@ async function handleGitHubRelease(payload, guilds) {
           tagName: release.tag_name,
           name: release.name || release.tag_name,
           author: sender.login,
-          description: descriptionFormatted || '',
+          description: descriptionFormatted,
           releaseUrl: release.html_url,
         });
       } else if (action === 'edited') {
@@ -2937,7 +2929,7 @@ async function handleGitHubRelease(payload, guilds) {
           tagName: release.tag_name,
           name: release.name || release.tag_name,
           author: sender.login,
-          description: descriptionFormatted || '',
+          description: descriptionFormatted,
           releaseUrl: release.html_url,
         });
       } else if (action === 'released') {
