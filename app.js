@@ -2803,12 +2803,6 @@ async function handleGitHubIssue(payload, guilds) {
 }
 
 /**
- * Get timezone offset in milliseconds for a given timezone
- * @param {string} timezone - Timezone name (e.g., 'Asia/Seoul', 'America/New_York')
- * @param {Date} date - Date to get offset for (default: now)
- * @returns {number} Offset in milliseconds
- */
-/**
  * Get timezone offset in milliseconds for a given timezone and date
  * @param {string} timezone - IANA timezone name (e.g., 'Asia/Seoul', 'America/New_York')
  * @param {Date} date - Date to calculate offset for (important for DST-aware timezones)
