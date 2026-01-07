@@ -192,8 +192,11 @@ export const guildSettingsQueries = {
 
 // Helper function to get next available ID (reuses deleted IDs)
 export function getNextMeetingId() {
-  const result = meetingQueries.getMinAvailableId.get();
-  return result ? result.min_id : 1;
+  // Do not reuse deleted IDs to avoid stale scheduled reminder jobs
+  // referencing a newly created meeting that happens to reuse the same ID.
+  // Always return the next monotonically increasing ID.
+  const result = db.prepare('SELECT MAX(id) AS max_id FROM meetings').get();
+  return (result?.max_id || 0) + 1;
 }
 
 export default db;
